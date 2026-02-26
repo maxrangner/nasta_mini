@@ -1,32 +1,45 @@
 #include "wifi_interface.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
 #include "credentials.h"
+#include "message_types.h"
 
-WifiInterface::WifiInterface() {
+static const char *TAG = "wifi interface";
 
-}
+WifiInterface::WifiInterface() {}
 
-void WifiInterface::init() {
+void WifiInterface::init(QueueHandle_t queue) {
+    wifi_event_queue_ = queue;
+    
     // Init phase
-    nvs_flash_init();
-    esp_netif_init();
-    esp_event_loop_create_default();
-    esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&cfg);
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Register event callbacks
+    esp_event_handler_register(
+        WIFI_EVENT,
+        ESP_EVENT_ANY_ID,
+        &callback,
+        this);
+
+    esp_event_handler_register(
+        IP_EVENT,
+        IP_EVENT_STA_GOT_IP,
+        &callback,
+        this);
 
     // Cfg phase
-    esp_wifi_set_mode(WIFI_MODE_STA);
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     wifi_config_t credentials = setCredentials();
-    esp_wifi_set_config(WIFI_IF_STA, &credentials);
-    esp_wifi_start();
-    esp_wifi_connect();
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &credentials));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "wifi_init_sta finished.");
+
+    esp_wifi_connect(); // Will move to state machine
 }
 
 wifi_config_t WifiInterface::setCredentials() {
@@ -38,4 +51,37 @@ wifi_config_t WifiInterface::setCredentials() {
 
 void WifiInterface::setMode() {
 
+}
+
+void WifiInterface::callback(void* arg, 
+    esp_event_base_t event_base,
+    int32_t event_id,
+    void* event_data) {
+        auto* self = static_cast<WifiInterface*>(arg);
+        WifiEvent event;
+
+        if (event_base == WIFI_EVENT) {
+            switch (event_id) {
+                case WIFI_EVENT_STA_START:
+                    event = WifiEvent::STARTED;
+                    xQueueSend(self->wifi_event_queue_, &event, 0);
+                    break;
+                case WIFI_EVENT_STA_DISCONNECTED:
+                    event = WifiEvent::DISCONNECTED;
+                    xQueueSend(self->wifi_event_queue_, &event, 0);
+                    break;
+                default:
+                    break;
+            }
+        } 
+        else if (event_base == IP_EVENT) {
+            switch (event_id) {
+                case IP_EVENT_STA_GOT_IP:
+                    event = WifiEvent::CONNECTED;
+                    xQueueSend(self->wifi_event_queue_, &event, 0);
+                    break;
+                default:
+                    break;
+            }
+        }
 }

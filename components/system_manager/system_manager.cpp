@@ -22,9 +22,6 @@ void SystemManager::systemTask(void* pvParameters) {
     auto* self = static_cast<SystemManager*>(pvParameters);
 
     while(true) {
-        ESP_LOGI(TAG, "%ld\n", self->counter_++);
-        if (self->counter_ % 50 == 0) {
-            vTaskDelay(pdMS_TO_TICKS(SystemManager::kUpdateInterval));
-        }
+        vTaskDelay(pdMS_TO_TICKS(SystemManager::kUpdateInterval_));
     }
 }

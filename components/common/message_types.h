@@ -12,3 +12,9 @@ struct SettingsPacket {
     char setting_ssid[30];
     char setting_password[30];
 };
+
+enum class WifiEvent{
+    STARTED,
+    CONNECTED,
+    DISCONNECTED,
+};

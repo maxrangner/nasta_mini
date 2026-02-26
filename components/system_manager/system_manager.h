@@ -15,8 +15,7 @@ class SystemManager {
     TaskHandle_t task_system_manager_ = nullptr;
     QueueHandle_t queue_data_ = nullptr;
     QueueHandle_t queue_settings_ = nullptr;
-    static constexpr uint32_t kUpdateInterval = 100;
-    uint32_t counter_ = 0;
+    static constexpr uint32_t kUpdateInterval_ = 100;
 public:
     SystemManager(Queues* queues);
     static void systemTask(void* pvParameters);
