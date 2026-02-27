@@ -25,7 +25,7 @@ class NetworkManager {
 public:
     NetworkManager(Queues* queues);
     static void networkTask(void* pvParameters);
-    NetworkState stateMachine(NetworkState curent_state, WifiEvent event);
+    NetworkState stateMachine(NetworkState curent_state, NetworkEvent event);
     void onStateChange(NetworkState state);
     static void reconnectTimerCallback(TimerHandle_t xTimer);
 };

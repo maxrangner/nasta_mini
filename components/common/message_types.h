@@ -13,9 +13,10 @@ struct SettingsPacket {
     char setting_password[30];
 };
 
-enum class WifiEvent{
+enum class NetworkEvent{
     STARTED,
     CONNECTED,
     DISCONNECTED,
-    RETRY_TIMER
+    RETRY_TIMER,
+    ERROR
 };

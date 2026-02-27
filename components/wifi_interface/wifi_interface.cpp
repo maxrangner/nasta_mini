@@ -60,16 +60,16 @@ void WifiInterface::callback(void* arg,
     int32_t event_id,
     void* event_data) {
         auto* self = static_cast<WifiInterface*>(arg);
-        WifiEvent event;
+        NetworkEvent event;
 
         if (event_base == WIFI_EVENT) {
             switch (event_id) {
                 case WIFI_EVENT_STA_START:
-                    event = WifiEvent::STARTED;
+                    event = NetworkEvent::STARTED;
                     xQueueSend(self->wifi_event_queue_, &event, 0);
                     break;
                 case WIFI_EVENT_STA_DISCONNECTED:
-                    event = WifiEvent::DISCONNECTED;
+                    event = NetworkEvent::DISCONNECTED;
                     xQueueSend(self->wifi_event_queue_, &event, 0);
                     break;
                 default:
@@ -79,7 +79,7 @@ void WifiInterface::callback(void* arg,
         else if (event_base == IP_EVENT) {
             switch (event_id) {
                 case IP_EVENT_STA_GOT_IP:
-                    event = WifiEvent::CONNECTED;
+                    event = NetworkEvent::CONNECTED;
                     xQueueSend(self->wifi_event_queue_, &event, 0);
                     break;
                 default:
