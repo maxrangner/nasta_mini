@@ -18,10 +18,11 @@ class NetworkManager {
     };
     NetworkState network_state = NetworkState::INIT;
     TaskHandle_t task_network_manager_ = nullptr;
-    QueueHandle_t queue_data_ = nullptr;
-    QueueHandle_t queue_settings_ = nullptr;
-    QueueHandle_t wifi_event_queue_ = nullptr;
+    QueueHandle_t system_in_queue_ = nullptr;
+    QueueHandle_t network_in_queue_ = nullptr;
+    DataPacket received_packet_;
     WifiInterface wifi_interface_;
+    
     TimerHandle_t wifi_reconnect_timer_;
     uint8_t reconnect_retires_ = 0;
     static constexpr uint32_t kUpdateInterval_ = 100;

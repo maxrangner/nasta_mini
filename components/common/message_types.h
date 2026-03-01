@@ -2,25 +2,11 @@
 #include "freertos/FreeRTOS.h"
 #include "types.h"
 
-struct Departure {
-    TimeDisplayType time_display;
-    TransportMode transport;
-    uint8_t direction;
-    uint8_t line;
-    uint8_t min_to_departure;
-    char clock_next_departure[6];
-};
-
-struct DeparturesPacket {
-    Departure departures[3];
-    uint8_t num_departures;
-};
-
-struct SettingsPacket {
-    TransportMode setting_transport_mode;
-    uint8_t setting_direction_code;
-    char setting_ssid[30];
-    char setting_password[30];
+enum class PacketType {
+    WIFI_EVENT,
+    NETWORK_EVENT,
+    API_DATA,
+    SETTINGS_DATA
 };
 
 enum class NetworkEvent{
@@ -29,4 +15,18 @@ enum class NetworkEvent{
     DISCONNECTED,
     RETRY_TIMER,
     ERROR
+};
+
+struct DataPacket {
+    PacketType type;
+    NetworkEvent network_event;
+};
+
+struct Departure {
+    TimeDisplayType time_display;
+    TransportMode transport;
+    uint8_t direction;
+    uint8_t line;
+    uint8_t min_to_departure;
+    char clock_next_departure[6];
 };

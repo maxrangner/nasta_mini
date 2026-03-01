@@ -6,14 +6,15 @@
 class WifiInterface {
     char ssid_[100];
     char password_[100];
-    QueueHandle_t wifi_event_queue_ = nullptr;
+    QueueHandle_t network_in_queue_ = nullptr;
 public:
-    WifiInterface();
-    void init(QueueHandle_t queue);
-    wifi_config_t setCredentials();
+    WifiInterface(QueueHandle_t queue);
+    void init();
     void connect();
+    void disconnect();
     void setMode();
-    static void callback(void* arg, 
+    wifi_config_t setCredentials();
+    static void wifiEventCallback(void* arg, 
         esp_event_base_t event_base,
         int32_t event_id,
         void* event_data);

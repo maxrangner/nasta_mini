@@ -6,8 +6,8 @@
 static const char *TAG = "system manager";
 
 SystemManager::SystemManager(Queues* queues) {
-    queue_data_ = queues->data_queue;
-    queue_settings_ = queues->settings_queue;
+    system_in_queue_ = queues->system_in_queue;
+    network_in_queue_ = queues->network_in_queue;
     
     xTaskCreatePinnedToCore(     // UI Task
       systemTask,                // Function to implement the task
@@ -18,12 +18,12 @@ SystemManager::SystemManager(Queues* queues) {
       &task_system_manager_,     // Task handle.
       0                          // Core where the task should run
     );
-    settings_ = {
-        .setting_transport_mode = TransportMode::METRO,
-        .setting_direction_code = 1,
-        .setting_ssid = SSID,
-        .setting_password = PASSWORD
-    };
+    // settings_ = {
+    //     .setting_transport_mode = TransportMode::METRO,
+    //     .setting_direction_code = 1,
+    //     .setting_ssid = SSID,
+    //     .setting_password = PASSWORD
+    // };
 }
 
 void SystemManager::systemTask(void* pvParameters) {

@@ -9,29 +9,24 @@
 
 static const char *TAG = "wifi interface";
 
-WifiInterface::WifiInterface() {}
+WifiInterface::WifiInterface(QueueHandle_t queue) : network_in_queue_(queue) {}
 
-void WifiInterface::init(QueueHandle_t queue) {
-    wifi_event_queue_ = queue;
-    
-    // Init phase
+void WifiInterface::init() {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    // Register event callbacks
     esp_event_handler_register(
         WIFI_EVENT,
         ESP_EVENT_ANY_ID,
-        &callback,
+        &wifiEventCallback,
         this);
 
     esp_event_handler_register(
         IP_EVENT,
         IP_EVENT_STA_GOT_IP,
-        &callback,
+        &wifiEventCallback,
         this);
 
-    // Cfg phase
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     wifi_config_t credentials = setCredentials();
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &credentials));
@@ -44,6 +39,14 @@ void WifiInterface::connect() {
     esp_wifi_connect();
 }
 
+void WifiInterface::disconnect() {
+
+}
+
+void WifiInterface::setMode() {
+
+}
+
 wifi_config_t WifiInterface::setCredentials() {
     wifi_config_t credentials = {};
     memcpy(credentials.sta.ssid, SSID, strlen(SSID));
@@ -51,26 +54,23 @@ wifi_config_t WifiInterface::setCredentials() {
     return credentials;
 }
 
-void WifiInterface::setMode() {
-
-}
-
-void WifiInterface::callback(void* arg, 
+void WifiInterface::wifiEventCallback(void* arg, 
     esp_event_base_t event_base,
     int32_t event_id,
     void* event_data) {
         auto* self = static_cast<WifiInterface*>(arg);
-        NetworkEvent event;
+        DataPacket packet;
+        packet.type = PacketType::WIFI_EVENT;
 
         if (event_base == WIFI_EVENT) {
             switch (event_id) {
                 case WIFI_EVENT_STA_START:
-                    event = NetworkEvent::STARTED;
-                    xQueueSend(self->wifi_event_queue_, &event, 0);
+                    packet.network_event = NetworkEvent::STARTED;
+                    xQueueSend(self->network_in_queue_, &packet, 0);
                     break;
                 case WIFI_EVENT_STA_DISCONNECTED:
-                    event = NetworkEvent::DISCONNECTED;
-                    xQueueSend(self->wifi_event_queue_, &event, 0);
+                    packet.network_event = NetworkEvent::DISCONNECTED;
+                    xQueueSend(self->network_in_queue_, &packet, 0);
                     break;
                 default:
                     break;
@@ -79,8 +79,8 @@ void WifiInterface::callback(void* arg,
         else if (event_base == IP_EVENT) {
             switch (event_id) {
                 case IP_EVENT_STA_GOT_IP:
-                    event = NetworkEvent::CONNECTED;
-                    xQueueSend(self->wifi_event_queue_, &event, 0);
+                    packet.network_event = NetworkEvent::CONNECTED;
+                    xQueueSend(self->network_in_queue_, &packet, 0);
                     break;
                 default:
                     break;

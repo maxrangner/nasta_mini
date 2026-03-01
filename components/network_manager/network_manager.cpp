@@ -5,17 +5,12 @@
 
 static const char *TAG = "network manager";
 
-NetworkManager::NetworkManager(Queues* queues) {
-    queue_data_ = queues->data_queue;
-    queue_settings_ = queues->settings_queue;
-    wifi_event_queue_ = queues->wifi_event_queue;
-
+NetworkManager::NetworkManager(Queues* queues) : system_in_queue_(queues->system_in_queue), network_in_queue_(queues->network_in_queue), wifi_interface_(queues->network_in_queue) {
     api_buffer = (char*)malloc(kMaxApiBufferSize_);
     if (api_buffer == nullptr) {
         ESP_LOGW(TAG, "kMaxApiBufferSize_ malloc failed");
     }
     
-
     xTaskCreatePinnedToCore(     // UI Task
       networkTask,               // Function to implement the task
       "networkTask",             // Name of the task
@@ -53,9 +48,12 @@ void NetworkManager::networkTask(void* pvParameters) {
     uint32_t last_api_fetch = 0;
 
     while(true) {
-        if (xQueueReceive(self->wifi_event_queue_, &wifi_event, pdMS_TO_TICKS(self->kUpdateInterval_)) == pdPASS) {
-            ESP_LOGI(TAG, "networkTask::wifi_event: %d", wifi_event);
-            network_state_next = self->stateMachine(self->network_state, wifi_event);
+        if (xQueueReceive(self->network_in_queue_, &self->received_packet_, pdMS_TO_TICKS(self->kUpdateInterval_)) == pdPASS) {
+            ESP_LOGI(TAG, "networkTask::network_in_queue: %d", &self->received_packet_.type);
+            
+            if (self->received_packet_.type == PacketType::WIFI_EVENT) {
+                network_state_next = self->stateMachine(self->network_state, self->received_packet_.network_event);
+            }
             
             if (network_state_next != self->network_state) {
                 self->network_state = network_state_next;
@@ -107,7 +105,7 @@ void NetworkManager::onStateChange(NetworkState new_state) {
     switch (new_state) {
         case NetworkState::INIT:
             ESP_LOGI(TAG, "onStateChange::INIT");
-            wifi_interface_.init(wifi_event_queue_);
+            wifi_interface_.init();
             break;
         case NetworkState::CONNECTING_STA:
             ESP_LOGI(TAG, "onStateChange::CONNECTING_STA");
@@ -131,8 +129,10 @@ void NetworkManager::onStateChange(NetworkState new_state) {
 
 void NetworkManager::reconnectTimerCallback(TimerHandle_t xTimer) {
     auto* self = static_cast<NetworkManager*>(pvTimerGetTimerID(xTimer));
-    NetworkEvent event = NetworkEvent::RETRY_TIMER;
-    xQueueSend(self->wifi_event_queue_, &event, 0);
+    DataPacket packet;
+    packet.type = PacketType::WIFI_EVENT;
+    packet.network_event = NetworkEvent::RETRY_TIMER;
+    xQueueSend(self->network_in_queue_, &packet, 0);
 }
 
 void NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
@@ -202,21 +202,32 @@ void NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
 
 void NetworkManager::jsonParser(char* buffer) {
     ESP_LOGI(TAG, "Parsing json");
+
     Departure new_departure;
+
     cJSON* root = cJSON_Parse(buffer);
     if (root == nullptr) {
         ESP_LOGW(TAG, "Error parsing root");
     }
+
     cJSON* departures = cJSON_GetObjectItem(root, "departures");
     if (departures == nullptr) {
         ESP_LOGW(TAG, "Error parsing departures");
     }
+
     if (cJSON_IsArray(departures)) {
-        uint8_t count = cJSON_GetArraySize(departures);
-        for (uint8_t i = 0; i < count; i++) {
-            cJSON* departure = cJSON_GetArrayItem(departures, i);
-            ESP_LOGI(TAG, "Json:\n%s", cJSON_Print(departure));
-        }
+        // uint8_t count = cJSON_GetArraySize(departures);
+        // for (uint8_t i = 0; i < count; i++) {
+        //     cJSON* departure = cJSON_GetArrayItem(departures, i);
+        //     ESP_LOGI(TAG, "Json:\n%s", cJSON_Print(departure));
+        // }
+        cJSON* departure = cJSON_GetArrayItem(departures, 0);
+        cJSON* destination = cJSON_GetObjectItem(departure, "destination");
+        // cJSON* transport = cJSON_GetObjectItem(departure, "transport");
+        // new_departure.transport = transport->valuestring;
+        cJSON* display = cJSON_GetObjectItem(departure, "display");
+        new_departure.min_to_departure = display->valueint;
+        ESP_LOGI(TAG, "Next departure:\n%s: %s", destination->valuestring, display->valuestring);
     }
     cJSON_Delete(root);
 }

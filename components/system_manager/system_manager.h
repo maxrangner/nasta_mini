@@ -14,9 +14,8 @@ enum class SystemState {
 
 class SystemManager {
     TaskHandle_t task_system_manager_ = nullptr;
-    QueueHandle_t queue_data_ = nullptr;
-    QueueHandle_t queue_settings_ = nullptr;
-    SettingsPacket settings_;
+    QueueHandle_t system_in_queue_ = nullptr;
+    QueueHandle_t network_in_queue_ = nullptr;
     static constexpr uint32_t kUpdateInterval_ = 100;
 public:
     SystemManager(Queues* queues);
