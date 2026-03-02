@@ -6,14 +6,15 @@
 #include "freertos/timers.h"
 #include "esp_event.h"
 #include "esp_wifi.h"
-#include <atomic>
 
 class WifiInterface {
 public:
     enum class WifiState {
         DISCONNECTED,
         CONNECTING_STA,
-        CONNECTED_STA
+        CONNECTED_STA,
+        STARTING_AP,
+        AP_ACTIVE
     };
     
     explicit WifiInterface(QueueHandle_t network_queue);
@@ -45,7 +46,7 @@ private:
     void handleStateChange(WifiState new_state);
     WifiEvent toWifiEvent(esp_event_base_t base, int32_t id);
 
-    QueueHandle_t network_in_queue_ = nullptr;
+    QueueHandle_t network_in_queue_;
     QueueHandle_t wifi_queue_;
     TimerHandle_t retry_timer_;
     TaskHandle_t task_handle_;

@@ -10,8 +10,3 @@ enum class TransportMode {
     TAXI,
     UNKNOWN
 };
-
-enum class TimeDisplayType {
-    MINUTES,
-    CLOCK_TIME
-};

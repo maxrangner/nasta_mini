@@ -30,6 +30,10 @@ void SystemManager::systemTask(void* pvParameters) {
     auto* self = static_cast<SystemManager*>(pvParameters);
 
     while(true) {
-        vTaskDelay(pdMS_TO_TICKS(SystemManager::kUpdateInterval_));
+        if (xQueueReceive(self->system_in_queue_, &self->packet_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
+            if (self->packet_.type == PacketType::API_DATA) {
+                ESP_LOGI(TAG, "Packet - API_DATA");
+            }
+        }
     }
 }

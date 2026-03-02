@@ -34,6 +34,7 @@ void WifiInterface::init() {
     wifi_config_t credentials = setCredentials();
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &credentials));
     ESP_ERROR_CHECK(esp_wifi_start());
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 
     retry_timer_ = xTimerCreate(
         "wifi_retry",
@@ -149,6 +150,7 @@ WifiInterface::WifiState WifiInterface::stateMachine(WifiState current, WifiEven
             if (event == WifiEvent::LOST_CONNECTION)
                 return WifiState::DISCONNECTED;
             break;
+        default: break;
     }
 
     return current;
@@ -162,7 +164,7 @@ void WifiInterface::handleStateChange(WifiState new_state) {
             ESP_LOGI(TAG, "handleStateChange::CONNECTING_STA");
             esp_wifi_connect();
             packet.type = PacketType::WIFI_UPDATE;
-            packet.network_event = WifiState::CONNECTING_STA;
+            packet.wifi_event = WifiLinkEvent::LINK_CONNECTING_STA;
             xQueueSend(network_in_queue_, &packet, 0);
             break;
 
@@ -170,7 +172,7 @@ void WifiInterface::handleStateChange(WifiState new_state) {
             ESP_LOGI(TAG, "handleStateChange::CONNECTED_STA");
             retry_count_ = 0;
             packet.type = PacketType::WIFI_UPDATE;
-            packet.network_event = WifiState::CONNECTED_STA;
+            packet.wifi_event = WifiLinkEvent::LINK_CONNECTED_STA;
             xQueueSend(network_in_queue_, &packet, 0);
             break;
 
@@ -178,7 +180,7 @@ void WifiInterface::handleStateChange(WifiState new_state) {
             ESP_LOGI(TAG, "handleStateChange::DISCONNECTED");
             ESP_LOGW(TAG, "WiFi connection lost");
             packet.type = PacketType::WIFI_UPDATE;
-            packet.network_event = WifiState::DISCONNECTED;
+            packet.wifi_event = WifiLinkEvent::LINK_DISCONNECTED;
             xQueueSend(network_in_queue_, &packet, 0);
 
             if (retry_count_ < MAX_RETRIES_) {
@@ -186,5 +188,6 @@ void WifiInterface::handleStateChange(WifiState new_state) {
                 xTimerStart(retry_timer_, 0);
             }
             break;
+        default: break;
     }
 }

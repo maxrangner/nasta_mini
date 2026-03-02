@@ -17,6 +17,7 @@ class SystemManager {
     QueueHandle_t system_in_queue_ = nullptr;
     QueueHandle_t network_in_queue_ = nullptr;
     static constexpr uint32_t kUpdateInterval_ = 100;
+    DataPacket packet_;
 public:
     SystemManager(Queues* queues);
     static void systemTask(void* pvParameters);

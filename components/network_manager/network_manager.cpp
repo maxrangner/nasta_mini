@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "message_types.h"
 #include "cJSON.h"
+#include "utils.h"
 
 static const char *TAG = "network manager";
 
@@ -41,12 +42,13 @@ void NetworkManager::networkTask(void* pvParameters) {
     while(true) {
         if (xQueueReceive(self->network_in_queue_, &self->packet_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
             if (self->packet_.type == PacketType::WIFI_UPDATE) {
-                ESP_LOGI(TAG, "Packet - WIFI_UPDATE: %d", self->packet_.network_event);
+                ESP_LOGI(TAG, "Packet - WIFI_UPDATE: %d", self->packet_.wifi_event);
             }
         }
         now = xTaskGetTickCount();
-        if ((now - last_api_fetch > api_fetch_interval) && self->packet_.network_event == WifiInterface::WifiState::CONNECTED_STA) {
+        if ((now - last_api_fetch > api_fetch_interval) && self->packet_.wifi_event == WifiLinkEvent::LINK_CONNECTED_STA) {
             self->apiFetch(&self->http_cfg_);
+            self->jsonParser(self->api_buffer);
             last_api_fetch = now;
         }
     }
@@ -85,7 +87,7 @@ void NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
     const uint32_t max_wait_ticks = pdMS_TO_TICKS(5000);
 
     while (total_read < content_length) {
-        uint32_t read = esp_http_client_read(client,
+        int32_t read = esp_http_client_read(client,
             api_buffer + total_read,
             content_length - total_read
         );
@@ -111,8 +113,6 @@ void NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
     }
 
     api_buffer[total_read] = '\0';
-
-    jsonParser(api_buffer);
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
 }
@@ -120,31 +120,67 @@ void NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
 void NetworkManager::jsonParser(char* buffer) {
     ESP_LOGI(TAG, "Parsing json");
 
-    Departure new_departure;
-
     cJSON* root = cJSON_Parse(buffer);
     if (root == nullptr) {
         ESP_LOGW(TAG, "Error parsing root");
     }
-
+    
     cJSON* departures = cJSON_GetObjectItem(root, "departures");
     if (departures == nullptr) {
         ESP_LOGW(TAG, "Error parsing departures");
     }
-
+    
+    Departures new_departures;
+    new_departures.num_direction_1 = 0;
+    new_departures.num_direction_2 = 0;
+    
     if (cJSON_IsArray(departures)) {
-        // uint8_t count = cJSON_GetArraySize(departures);
-        // for (uint8_t i = 0; i < count; i++) {
-        //     cJSON* departure = cJSON_GetArrayItem(departures, i);
-        //     ESP_LOGI(TAG, "Json:\n%s", cJSON_Print(departure));
-        // }
-        cJSON* departure = cJSON_GetArrayItem(departures, 0);
-        cJSON* destination = cJSON_GetObjectItem(departure, "destination");
-        // cJSON* transport = cJSON_GetObjectItem(departure, "transport");
-        // new_departure.transport = transport->valuestring;
-        cJSON* display = cJSON_GetObjectItem(departure, "display");
-        new_departure.min_to_departure = display->valueint;
-        ESP_LOGI(TAG, "Next departure:\n%s: %s", destination->valuestring, display->valuestring);
+        uint8_t count = cJSON_GetArraySize(departures);
+        ESP_LOGW(TAG, "Departures: %d", count);
+
+        for (uint8_t i = 0; i < count; i++) {
+            Departure new_departure;
+            cJSON* departure = cJSON_GetArrayItem(departures, i);
+
+            cJSON* state = cJSON_GetObjectItem(departure, "state");
+            if (strcmp(state->valuestring, "EXPECTED") != 0) {
+                continue;
+            }
+
+            cJSON* destination = cJSON_GetObjectItem(departure, "destination");
+            snprintf(new_departure.destination, sizeof(new_departure.destination), "%s", destination->valuestring);
+            cJSON* direction_code = cJSON_GetObjectItem(departure, "direction_code");
+            new_departure.direction_code = direction_code->valueint;
+            cJSON* display = cJSON_GetObjectItem(departure, "display");
+            snprintf(new_departure.display, sizeof(new_departure.display), "%s", display->valuestring);
+            cJSON* transport_mode = cJSON_GetObjectItem(departure, "display");
+            new_departure.transport_mode = toTransportMode(transport_mode->valuestring);
+            cJSON* line = cJSON_GetObjectItem(departure, "line");
+            cJSON* line_id = cJSON_GetObjectItem(line, "id");
+            new_departure.line = line_id->valueint;
+
+            if (new_departure.direction_code == 1) {
+                new_departures.departures_dir_1[new_departures.num_direction_1] = new_departure;
+                new_departures.num_direction_1++;
+            }
+            if (new_departure.direction_code == 2) {
+                new_departures.departures_dir_2[new_departures.num_direction_1] = new_departure;
+                new_departures.num_direction_2++;
+            }
+
+            ESP_LOGI(TAG, "%s %s", destination->valuestring, display->valuestring);
+            printf("\n");
+        }
+        // cJSON* departure = cJSON_GetArrayItem(departures, 0);
+        // cJSON* destination = cJSON_GetObjectItem(departure, "destination");
+        // cJSON* display = cJSON_GetObjectItem(departure, "display");
+
+        // ESP_LOGI(TAG, "num_departures: %d Next departure:\n%s: %s", count, destination->valuestring, display->valuestring);
     }
+    DataPacket packet {
+        .type = PacketType::API_DATA,
+        .departures = new_departures
+    };
+    xQueueSend(system_in_queue_, &packet, 0);
     cJSON_Delete(root);
 }
