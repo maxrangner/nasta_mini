@@ -5,10 +5,13 @@
 #include "message_types.h"
 
 enum class SystemState {
-    BOOT, // 0
-    NOT_CONNECTED, // 1
-    CONNECTED, // 2
-    SETUP, // 3
+    BOOT,
+    CONNECTING,
+    NO_CONNECTION,
+    SETUP,
+    DEPARTURES,
+    NO_DEPARTURES,
+    DATA_ERROR,
     ERROR
 };
 
@@ -19,8 +22,13 @@ class SystemManager {
     QueueHandle_t network_in_queue_ = nullptr;
     static constexpr uint32_t kUpdateInterval_ = 100;
     SystemPacket packet_ {};
+    SystemState system_state_ = SystemState::BOOT;
 public:
     SystemManager(Queues* queues);
     void init();
     static void systemTask(void* pvParameters);
+    void setState(SystemState new_state);
+    void handleNetworkStatus(NetworkStatus status);
+    void handleDepartures(const Departures& departures);
+    void handleDataError();
 };

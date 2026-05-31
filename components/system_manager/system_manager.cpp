@@ -15,6 +15,8 @@ void SystemManager::init() {
         return;
     }
 
+    ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
+
     xTaskCreatePinnedToCore(     // UI Task
         systemTask,                // Function to implement the task
         "systemTask",              // Name of the task
@@ -26,17 +28,76 @@ void SystemManager::init() {
     );
 }
 
+void SystemManager::setState(SystemState new_state) {
+    if (system_state_ == new_state) {
+        return;
+    }
+
+    system_state_ = new_state;
+    ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
+}
+
+void SystemManager::handleNetworkStatus(NetworkStatus status) {
+    switch (status) {
+        case NetworkStatus::DISCONNECTED:
+            setState(SystemState::NO_CONNECTION);
+            break;
+
+        case NetworkStatus::CONNECTING:
+            setState(SystemState::CONNECTING);
+            break;
+
+        case NetworkStatus::CONNECTED:
+            if (system_state_ == SystemState::BOOT ||
+                system_state_ == SystemState::NO_CONNECTION ||
+                system_state_ == SystemState::CONNECTING) {
+                setState(SystemState::CONNECTING);
+            }
+            break;
+
+        case NetworkStatus::SETUP:
+            setState(SystemState::SETUP);
+            break;
+
+        case NetworkStatus::ERROR:
+            setState(SystemState::ERROR);
+            break;
+    }
+}
+
+void SystemManager::handleDepartures(const Departures& departures) {
+    if ((departures.num_direction_1 + departures.num_direction_2) == 0) {
+        setState(SystemState::NO_DEPARTURES);
+        return;
+    }
+
+    setState(SystemState::DEPARTURES);
+}
+
+void SystemManager::handleDataError() {
+    setState(SystemState::DATA_ERROR);
+}
+
 void SystemManager::systemTask(void* pvParameters) {
     auto* self = static_cast<SystemManager*>(pvParameters);
 
     while(true) {
         if (xQueueReceive(self->system_in_queue_, &self->packet_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
-            if (self->packet_.type == SystemPacketType::NETWORK_STATUS) {
-                ESP_LOGI(TAG, "Packet - NETWORK_STATUS: %d", static_cast<int>(self->packet_.network_status));
-            }
+            switch (self->packet_.type) {
+                case SystemPacketType::NETWORK_STATUS:
+                    ESP_LOGI(TAG, "Packet - NETWORK_STATUS: %d", static_cast<int>(self->packet_.network_status));
+                    self->handleNetworkStatus(self->packet_.network_status);
+                    break;
 
-            if (self->packet_.type == SystemPacketType::DEPARTURES_DATA) {
-                ESP_LOGI(TAG, "Packet - DEPARTURES_DATA");
+                case SystemPacketType::DEPARTURES_DATA:
+                    ESP_LOGI(TAG, "Packet - DEPARTURES_DATA");
+                    self->handleDepartures(self->packet_.departures);
+                    break;
+
+                case SystemPacketType::DATA_ERROR:
+                    ESP_LOGI(TAG, "Packet - DATA_ERROR");
+                    self->handleDataError();
+                    break;
             }
         }
     }

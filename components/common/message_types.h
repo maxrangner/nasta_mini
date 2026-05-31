@@ -16,7 +16,8 @@ struct NetworkPacket {
 
 enum class SystemPacketType {
     NETWORK_STATUS,
-    DEPARTURES_DATA
+    DEPARTURES_DATA,
+    DATA_ERROR
 };
 
 enum class NetworkStatus {

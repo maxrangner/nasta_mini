@@ -33,7 +33,8 @@ public:
     void init();
     static void networkTask(void* pvParameters);
 
-    void apiFetch(esp_http_client_config_t* cfg);
-    void jsonParser(char* buffer);
+    bool apiFetch(esp_http_client_config_t* cfg);
+    bool jsonParser(char* buffer);
+    void sendDataError();
     static NetworkStatus toNetworkStatus(WifiLinkEvent event);
 };
