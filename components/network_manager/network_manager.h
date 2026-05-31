@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_http_client.h"
+#include "esp_http_server.h"
 #include "esp_crt_bundle.h"
 #include "app_context.h"
 #include "wifi_interface.h"
@@ -40,13 +41,16 @@ class NetworkManager {
     char* api_buffer = nullptr;
     char api_url_[kMaxApiUrlLength_] = {};
     DeviceSettings settings_ {};
-    BootMode boot_mode_ = BootMode::SETUP;
+    httpd_handle_t setup_server_ = nullptr;
 
     esp_http_client_config_t http_cfg_ {};
     void setState(NetworkState new_state);
     void handleWifiLinkEvent(WifiLinkEvent event);
     void sendStatus(NetworkStatus status);
     bool buildApiUrl();
+    void startSetupMode();
+    bool startNormalMode();
+    void handleSetupConfig(const SetupConfig& config);
 public:
     NetworkManager(Queues* queues);
     void init();

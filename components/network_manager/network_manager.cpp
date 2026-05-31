@@ -3,8 +3,11 @@
 #include "message_types.h"
 #include "cJSON.h"
 #include "settings_storage.h"
+#include "setup_portal.h"
 #include "utils.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static const char *TAG = "network manager";
 
@@ -55,49 +58,30 @@ bool NetworkManager::buildApiUrl() {
     return written > 0 && written < sizeof(api_url_);
 }
 
-void NetworkManager::init() {
-    if (task_network_manager_ != nullptr) {
-        return;
-    }
+void NetworkManager::startSetupMode() {
+    setState(NetworkState::AP_SETUP);
+    sendStatus(NetworkStatus::SETUP);
+    wifi_interface_.setApMode();
+    wifi_interface_.setApConfig();
+    wifi_interface_.start();
+}
 
-    if (!loadDeviceSettings(&settings_)) {
-        ESP_LOGI(TAG, "No stored settings loaded, using defaults");
-    }
-
-    boot_mode_ = decideBootMode(settings_);
-    ESP_LOGI(TAG, "Boot mode -> %d", static_cast<int>(boot_mode_));
-
-    xTaskCreatePinnedToCore(     // UI Task
-        networkTask,               // Function to implement the task
-        "networkTask",             // Name of the task
-        8192,                      // Stack size in words
-        this,                      // Task input parameter
-        1,                         // Priority of the task
-        &task_network_manager_,    // Task handle.
-        0                          // Core where the task should run
-    );
-
-    wifi_interface_.init();
-
-    if (boot_mode_ == BootMode::SETUP) {
-        setState(NetworkState::AP_SETUP);
-        sendStatus(NetworkStatus::SETUP);
-        wifi_interface_.setApMode();
-        wifi_interface_.setApConfig();
-        wifi_interface_.start();
-        return;
-    }
-
+bool NetworkManager::startNormalMode() {
     if (!buildApiUrl()) {
         ESP_LOGW(TAG, "Failed to build API URL from settings");
         setState(NetworkState::NETWORK_ERROR);
         sendStatus(NetworkStatus::NETWORK_ERROR);
-        return;
+        return false;
     }
 
-    api_buffer = (char*)malloc(kMaxApiBufferSize_);
     if (api_buffer == nullptr) {
-        ESP_LOGW(TAG, "kMaxApiBufferSize_ malloc failed");
+        api_buffer = (char*)malloc(kMaxApiBufferSize_);
+        if (api_buffer == nullptr) {
+            ESP_LOGW(TAG, "kMaxApiBufferSize_ malloc failed");
+            setState(NetworkState::NETWORK_ERROR);
+            sendStatus(NetworkStatus::NETWORK_ERROR);
+            return false;
+        }
     }
 
     http_cfg_ = {};
@@ -112,6 +96,59 @@ void NetworkManager::init() {
     setState(NetworkState::STA_CONNECTING);
     sendStatus(NetworkStatus::CONNECTING);
     wifi_interface_.connect();
+    return true;
+}
+
+void NetworkManager::handleSetupConfig(const SetupConfig& config) {
+    if (!isValidSetupConfig(config)) {
+        ESP_LOGW(TAG, "Rejected invalid setup config");
+        return;
+    }
+
+    applySetupConfig(settings_, config);
+
+    if (!saveDeviceSettings(settings_)) {
+        ESP_LOGW(TAG, "Failed to save setup config");
+        setState(NetworkState::NETWORK_ERROR);
+        sendStatus(NetworkStatus::NETWORK_ERROR);
+        return;
+    }
+
+    stopSetupPortal(&setup_server_);
+    wifi_interface_.stop();
+    startNormalMode();
+}
+
+void NetworkManager::init() {
+    if (task_network_manager_ != nullptr) {
+        return;
+    }
+
+    if (!loadDeviceSettings(&settings_)) {
+        ESP_LOGI(TAG, "No stored settings loaded, using defaults");
+    }
+
+    BootMode boot_mode = decideBootMode(settings_);
+    ESP_LOGI(TAG, "Boot mode -> %d", static_cast<int>(boot_mode));
+
+    xTaskCreatePinnedToCore(     // UI Task
+        networkTask,               // Function to implement the task
+        "networkTask",             // Name of the task
+        8192,                      // Stack size in words
+        this,                      // Task input parameter
+        1,                         // Priority of the task
+        &task_network_manager_,    // Task handle.
+        0                          // Core where the task should run
+    );
+
+    wifi_interface_.init();
+
+    if (boot_mode == BootMode::SETUP) {
+        startSetupMode();
+        return;
+    }
+
+    startNormalMode();
 }
 
 void NetworkManager::networkTask(void* pvParameters) {
@@ -120,9 +157,18 @@ void NetworkManager::networkTask(void* pvParameters) {
 
     while(true) {
         if (xQueueReceive(self->network_in_queue_, &self->packet_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
-            self->wifi_link_event_ = self->packet_.wifi_link_event;
-            ESP_LOGI(TAG, "Packet - WIFI_LINK_EVENT: %d", static_cast<int>(self->wifi_link_event_));
-            self->handleWifiLinkEvent(self->wifi_link_event_);
+            switch (self->packet_.type) {
+                case NetworkPacketType::WIFI_LINK_EVENT:
+                    self->wifi_link_event_ = self->packet_.wifi_link_event;
+                    ESP_LOGI(TAG, "Packet - WIFI_LINK_EVENT: %d", static_cast<int>(self->wifi_link_event_));
+                    self->handleWifiLinkEvent(self->wifi_link_event_);
+                    break;
+
+                case NetworkPacketType::SETUP_CONFIG:
+                    ESP_LOGI(TAG, "Packet - SETUP_CONFIG");
+                    self->handleSetupConfig(self->packet_.setup_config);
+                    break;
+            }
         }
         now = xTaskGetTickCount();
 
@@ -192,6 +238,10 @@ void NetworkManager::handleWifiLinkEvent(WifiLinkEvent event) {
             api_failures_ = 0;
             setState(NetworkState::AP_SETUP);
             sendStatus(NetworkStatus::SETUP);
+            if (!startSetupPortal(&setup_server_, network_in_queue_)) {
+                setState(NetworkState::NETWORK_ERROR);
+                sendStatus(NetworkStatus::NETWORK_ERROR);
+            }
             break;
 
         case WifiLinkEvent::LINK_ERROR:

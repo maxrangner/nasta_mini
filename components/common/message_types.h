@@ -1,5 +1,6 @@
 #pragma once
 #include "freertos/FreeRTOS.h"
+#include "settings.h"
 #include "types.h"
 
 enum class WifiLinkEvent {
@@ -10,8 +11,15 @@ enum class WifiLinkEvent {
     LINK_ERROR
 };
 
+enum class NetworkPacketType {
+    WIFI_LINK_EVENT,
+    SETUP_CONFIG
+};
+
 struct NetworkPacket {
-    WifiLinkEvent wifi_link_event;
+    NetworkPacketType type = NetworkPacketType::WIFI_LINK_EVENT;
+    WifiLinkEvent wifi_link_event = WifiLinkEvent::LINK_DISCONNECTED;
+    SetupConfig setup_config {};
 };
 
 enum class SystemPacketType {

@@ -34,6 +34,11 @@ void WifiInterface::start() {
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
+void WifiInterface::stop() {
+    ESP_LOGI(TAG, "stop");
+    ESP_ERROR_CHECK(esp_wifi_stop());
+}
+
 void WifiInterface::connect() {
     ESP_LOGI(TAG, "connect");
     ESP_ERROR_CHECK(esp_wifi_connect());
@@ -102,6 +107,7 @@ wifi_config_t WifiInterface::toApConfig() {
 
 void WifiInterface::sendLinkEvent(WifiLinkEvent event) {
     NetworkPacket packet {};
+    packet.type = NetworkPacketType::WIFI_LINK_EVENT;
     packet.wifi_link_event = event;
     xQueueSend(network_in_queue_, &packet, 0);
 }

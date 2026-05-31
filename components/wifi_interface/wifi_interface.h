@@ -13,6 +13,7 @@ public:
     explicit WifiInterface(QueueHandle_t network_queue);
     void init();
     void start();
+    void stop();
     void connect();
     void disconnect();
     void setStaMode();
