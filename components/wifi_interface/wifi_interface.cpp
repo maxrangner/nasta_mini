@@ -1,7 +1,7 @@
 #include "wifi_interface.h"
 #include "esp_log.h"
 #include "message_types.h"
-#include "credentials.h"
+#include <string.h>
 
 static const char *TAG = "wifi interface";
 
@@ -9,7 +9,7 @@ WifiInterface::WifiInterface(QueueHandle_t queue)
     : network_in_queue_(queue) {
 }
 
-void WifiInterface::init() {
+void WifiInterface::init(const WifiSettings& settings) {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
@@ -26,7 +26,7 @@ void WifiInterface::init() {
         this);
 
     setStaMode();
-    wifi_config_t credentials = setCredentials();
+    wifi_config_t credentials = toWifiConfig(settings);
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &credentials));
     ESP_ERROR_CHECK(esp_wifi_start());
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
@@ -66,10 +66,13 @@ void WifiInterface::wifiEventCallback(void* arg,
         }
 }
 
-wifi_config_t WifiInterface::setCredentials() {
+wifi_config_t WifiInterface::toWifiConfig(const WifiSettings& settings) {
     wifi_config_t credentials = {};
-    memcpy(credentials.sta.ssid, SSID, strlen(SSID));
-    memcpy(credentials.sta.password, PASSWORD, strlen(PASSWORD));
+    size_t ssid_length = strnlen(settings.ssid, kMaxWifiSsidLength);
+    size_t password_length = strnlen(settings.password, kMaxWifiPasswordLength);
+
+    memcpy(credentials.sta.ssid, settings.ssid, ssid_length);
+    memcpy(credentials.sta.password, settings.password, password_length);
     return credentials;
 }
 

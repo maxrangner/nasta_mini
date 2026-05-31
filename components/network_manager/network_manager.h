@@ -6,6 +6,7 @@
 #include "app_context.h"
 #include "wifi_interface.h"
 #include "message_types.h"
+#include "settings.h"
 
 class NetworkManager {
     enum class NetworkState {
@@ -35,12 +36,17 @@ class NetworkManager {
     static constexpr uint8_t kMaxRetries_ = 5;
     static constexpr uint8_t kMaxApiFailures_ = 6;
     static constexpr size_t kMaxApiBufferSize_ = 102400;
+    static constexpr size_t kMaxApiUrlLength_ = 160;
     char* api_buffer = nullptr;
+    char api_url_[kMaxApiUrlLength_] = {};
+    DeviceSettings settings_ {};
 
     esp_http_client_config_t http_cfg_ {};
     void setState(NetworkState new_state);
     void handleWifiLinkEvent(WifiLinkEvent event);
     void sendStatus(NetworkStatus status);
+    bool hasRequiredSettings() const;
+    bool buildApiUrl();
 public:
     NetworkManager(Queues* queues);
     void init();

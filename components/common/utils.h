@@ -3,4 +3,5 @@
 #include "types.h"
 #include <cstdint>
 
-TransportMode toTransportMode(char* transport_mode);
+TransportMode toTransportMode(const char* transport_mode);
+const char* toTransportModeApiString(TransportMode transport_mode);

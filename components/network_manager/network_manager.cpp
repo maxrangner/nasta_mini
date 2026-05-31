@@ -2,7 +2,9 @@
 #include "esp_log.h"
 #include "message_types.h"
 #include "cJSON.h"
+#include "settings_storage.h"
 #include "utils.h"
+#include <stdio.h>
 
 static const char *TAG = "network manager";
 
@@ -28,8 +30,66 @@ void NetworkManager::sendStatus(NetworkStatus status) {
     xQueueSend(system_in_queue_, &packet, 0);
 }
 
+bool NetworkManager::hasRequiredSettings() const {
+    if (settings_.wifi.ssid[0] == '\0') {
+        return false;
+    }
+
+    if (settings_.site.site_id == 0) {
+        return false;
+    }
+
+    return true;
+}
+
+bool NetworkManager::buildApiUrl() {
+    const char* transport_filter = toTransportModeApiString(settings_.site.transport_filter);
+
+    if (transport_filter[0] == '\0') {
+        int written = snprintf(
+            api_url_,
+            sizeof(api_url_),
+            "https://transport.integration.sl.se/v1/sites/%lu/departures?forecast=500",
+            static_cast<unsigned long>(settings_.site.site_id)
+        );
+
+        return written > 0 && written < sizeof(api_url_);
+    }
+
+    int written = snprintf(
+        api_url_,
+        sizeof(api_url_),
+        "https://transport.integration.sl.se/v1/sites/%lu/departures?transport=%s&forecast=500",
+        static_cast<unsigned long>(settings_.site.site_id),
+        transport_filter
+    );
+
+    return written > 0 && written < sizeof(api_url_);
+}
+
 void NetworkManager::init() {
     if (task_network_manager_ != nullptr) {
+        return;
+    }
+
+    if (!loadDeviceSettings(&settings_)) {
+        ESP_LOGW(TAG, "No stored device settings loaded");
+        setState(NetworkState::NETWORK_ERROR);
+        sendStatus(NetworkStatus::NETWORK_ERROR);
+        return;
+    }
+
+    if (!hasRequiredSettings()) {
+        ESP_LOGW(TAG, "Stored device settings are incomplete");
+        setState(NetworkState::NETWORK_ERROR);
+        sendStatus(NetworkStatus::NETWORK_ERROR);
+        return;
+    }
+
+    if (!buildApiUrl()) {
+        ESP_LOGW(TAG, "Failed to build API URL from settings");
+        setState(NetworkState::NETWORK_ERROR);
+        sendStatus(NetworkStatus::NETWORK_ERROR);
         return;
     }
 
@@ -39,8 +99,7 @@ void NetworkManager::init() {
     }
 
     http_cfg_ = {};
-    http_cfg_.url = "https://transport.integration.sl.se/v1/sites/9143/departures?transport=METRO&forecast=500";
-    // http_cfg_.url = "http://"CONFIG_EXAMPLE_HTTP_ENDPOINT"/get";
+    http_cfg_.url = api_url_;
     http_cfg_.method = HTTP_METHOD_GET;
     http_cfg_.timeout_ms = 5000;
     http_cfg_.crt_bundle_attach = esp_crt_bundle_attach;
@@ -55,7 +114,7 @@ void NetworkManager::init() {
         0                          // Core where the task should run
     );
 
-    wifi_interface_.init();
+    wifi_interface_.init(settings_.wifi);
     setState(NetworkState::STA_CONNECTING);
     sendStatus(NetworkStatus::CONNECTING);
     wifi_interface_.setStaMode();

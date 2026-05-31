@@ -1,7 +1,6 @@
 #include "system_manager.h"
 #include "esp_log.h"
 #include "types.h"
-#include "credentials.h"
 
 static const char *TAG = "system manager";
 
