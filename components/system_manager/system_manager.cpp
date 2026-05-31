@@ -66,7 +66,7 @@ void SystemManager::handleNetworkStatus(NetworkStatus status) {
 }
 
 void SystemManager::handleDepartures(const Departures& departures) {
-    if ((departures.num_direction_1 + departures.num_direction_2) == 0) {
+    if ((departures.directions[0].count + departures.directions[1].count) == 0) {
         setState(SystemState::NO_DEPARTURES);
         return;
     }

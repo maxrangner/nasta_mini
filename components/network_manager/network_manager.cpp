@@ -276,37 +276,39 @@ bool NetworkManager::jsonParser(char* buffer) {
         }
 
         cJSON* destination = cJSON_GetObjectItem(departure, "destination");
-        cJSON* direction_code = cJSON_GetObjectItem(departure, "direction_code");
+        cJSON* direction_code_json = cJSON_GetObjectItem(departure, "direction_code");
         cJSON* display = cJSON_GetObjectItem(departure, "display");
         cJSON* transport_mode = cJSON_GetObjectItem(departure, "display");
-        cJSON* line = cJSON_GetObjectItem(departure, "line");
-        cJSON* line_id = cJSON_GetObjectItem(line, "id");
+        cJSON* line_json = cJSON_GetObjectItem(departure, "line");
+        cJSON* line_id_json = cJSON_GetObjectItem(line_json, "id");
 
         if (!cJSON_IsString(destination) ||
-            !cJSON_IsNumber(direction_code) ||
+            !cJSON_IsNumber(direction_code_json) ||
             !cJSON_IsString(display) ||
             !cJSON_IsString(transport_mode) ||
-            !cJSON_IsNumber(line_id)) {
+            !cJSON_IsNumber(line_id_json)) {
             ESP_LOGW(TAG, "Error parsing departure fields");
             cJSON_Delete(root);
             return false;
         }
 
+        uint8_t direction = direction_code_json->valueint;
+        uint8_t line_number = line_id_json->valueint;
+
         snprintf(new_departure.destination, sizeof(new_departure.destination), "%s", destination->valuestring);
-        new_departure.direction_code = direction_code->valueint;
         snprintf(new_departure.display, sizeof(new_departure.display), "%s", display->valuestring);
         new_departure.transport_mode = toTransportMode(transport_mode->valuestring);
-        new_departure.line = line_id->valueint;
+        new_departure.line = line_number;
 
-        if (new_departure.direction_code == 1 &&
-            new_departures.num_direction_1 < 3) {
-            new_departures.departures_dir_1[new_departures.num_direction_1] = new_departure;
-            new_departures.num_direction_1++;
-        }
-        if (new_departure.direction_code == 2 &&
-            new_departures.num_direction_2 < 3) {
-            new_departures.departures_dir_2[new_departures.num_direction_2] = new_departure;
-            new_departures.num_direction_2++;
+        if (direction >= 1 &&
+            direction <= kMaxDepartureDirections) {
+            DirectionDepartures& direction_departures =
+                new_departures.directions[direction - 1];
+
+            if (direction_departures.count < kMaxDeparturesPerDirection) {
+                direction_departures.departures[direction_departures.count] = new_departure;
+                direction_departures.count++;
+            }
         }
 
         ESP_LOGI(TAG, "%s %s", destination->valuestring, display->valuestring);

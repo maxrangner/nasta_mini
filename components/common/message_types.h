@@ -28,19 +28,23 @@ enum class NetworkStatus {
     ERROR
 };
 
+static constexpr uint8_t kMaxDepartureDirections = 2;
+static constexpr uint8_t kMaxDeparturesPerDirection = 3;
+
 struct Departure {
     char destination[20];
-    uint8_t direction_code;
     char display[10];
     TransportMode transport_mode;
     uint8_t line;
 };
 
+struct DirectionDepartures {
+    Departure departures[kMaxDeparturesPerDirection];
+    uint8_t count;
+};
+
 struct Departures {
-    Departure departures_dir_1[3];
-    Departure departures_dir_2[3];
-    uint8_t num_direction_1;
-    uint8_t num_direction_2;
+    DirectionDepartures directions[kMaxDepartureDirections];
 };
 
 struct SystemPacket {
