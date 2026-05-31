@@ -44,11 +44,6 @@ void WifiInterface::connect() {
     ESP_ERROR_CHECK(esp_wifi_connect());
 }
 
-void WifiInterface::disconnect() {
-    ESP_LOGI(TAG, "disconnect");
-    ESP_ERROR_CHECK(esp_wifi_disconnect());
-}
-
 void WifiInterface::setStaMode() {
     ESP_LOGI(TAG, "setStaMode");
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));

@@ -16,7 +16,6 @@ class NetworkManager {
         STA_CONNECTED,
         STA_RECONNECTING,
         AP_SETUP,
-        API_ERROR,
         NETWORK_ERROR
     };
     NetworkState network_state_ = NetworkState::INIT;
@@ -25,7 +24,7 @@ class NetworkManager {
     QueueHandle_t network_in_queue_ = nullptr;
     WifiInterface wifi_interface_;
     NetworkPacket packet_ {};
-    WifiLinkEvent wifi_link_event_ = WifiLinkEvent::LINK_DISCONNECTED;
+    NetworkSnapshot snapshot_ {};
     TickType_t prev_reconnect_attempt_ = 0;
     TickType_t prev_api_fetch_ = 0;
     uint8_t reconnection_attempts_ = 0;
@@ -46,17 +45,16 @@ class NetworkManager {
     esp_http_client_config_t http_cfg_ {};
     void setState(NetworkState new_state);
     void handleWifiLinkEvent(WifiLinkEvent event);
-    void sendStatus(NetworkStatus status);
+    void sendSnapshot();
     bool buildApiUrl();
     void startSetupMode();
-    bool startNormalMode();
+    void startNormalMode();
     void handleSetupConfig(const SetupConfig& config);
 public:
     NetworkManager(Queues* queues);
     void init();
     static void networkTask(void* pvParameters);
 
-    bool apiFetch(esp_http_client_config_t* cfg);
-    bool jsonParser(char* buffer);
-    void sendApiError();
+    bool apiFetch();
+    bool jsonParser(char* buffer, Departures* departures);
 };

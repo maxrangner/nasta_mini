@@ -33,15 +33,6 @@ struct DeviceSettings {
     SetupSettings setup {};
 };
 
-enum class SetupState : uint8_t {
-    IDLE,
-    START_AP,
-    WAIT_FOR_CONFIG,
-    SAVE_CONFIG,
-    EXIT_SETUP,
-    ERROR
-};
-
 struct SetupConfig {
     WifiSettings wifi {};
     SiteSettings site {};

@@ -5,7 +5,6 @@
 #include "settings_storage.h"
 #include "setup_portal.h"
 #include "utils.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,11 +25,8 @@ void NetworkManager::setState(NetworkState new_state) {
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(network_state_));
 }
 
-void NetworkManager::sendStatus(NetworkStatus status) {
-    SystemPacket packet {};
-    packet.type = SystemPacketType::NETWORK_STATUS;
-    packet.network_status = status;
-    xQueueSend(system_in_queue_, &packet, 0);
+void NetworkManager::sendSnapshot() {
+    xQueueSend(system_in_queue_, &snapshot_, 0);
 }
 
 bool NetworkManager::buildApiUrl() {
@@ -68,18 +64,22 @@ bool NetworkManager::buildApiUrl() {
 
 void NetworkManager::startSetupMode() {
     setState(NetworkState::AP_SETUP);
-    sendStatus(NetworkStatus::SETUP);
+    snapshot_.connectivity = NetworkStatus::SETUP;
+    snapshot_.fetch_status = FetchStatus::IDLE;
+    snapshot_.departures = {};
+    sendSnapshot();
     wifi_interface_.setApMode();
     wifi_interface_.setApConfig();
     wifi_interface_.start();
 }
 
-bool NetworkManager::startNormalMode() {
+void NetworkManager::startNormalMode() {
     if (!buildApiUrl()) {
         ESP_LOGW(TAG, "Failed to build API URL from settings");
         setState(NetworkState::NETWORK_ERROR);
-        sendStatus(NetworkStatus::NETWORK_ERROR);
-        return false;
+        snapshot_.connectivity = NetworkStatus::NETWORK_ERROR;
+        sendSnapshot();
+        return;
     }
 
     if (api_buffer == nullptr) {
@@ -87,8 +87,9 @@ bool NetworkManager::startNormalMode() {
         if (api_buffer == nullptr) {
             ESP_LOGW(TAG, "kMaxApiBufferSize_ malloc failed");
             setState(NetworkState::NETWORK_ERROR);
-            sendStatus(NetworkStatus::NETWORK_ERROR);
-            return false;
+            snapshot_.connectivity = NetworkStatus::NETWORK_ERROR;
+            sendSnapshot();
+            return;
         }
     }
 
@@ -102,9 +103,11 @@ bool NetworkManager::startNormalMode() {
     wifi_interface_.setStaConfig(settings_.wifi);
     wifi_interface_.start();
     setState(NetworkState::STA_CONNECTING);
-    sendStatus(NetworkStatus::CONNECTING);
+    snapshot_.connectivity = NetworkStatus::CONNECTING;
+    snapshot_.fetch_status = FetchStatus::IDLE;
+    snapshot_.departures = {};
+    sendSnapshot();
     wifi_interface_.connect();
-    return true;
 }
 
 void NetworkManager::handleSetupConfig(const SetupConfig& config) {
@@ -118,7 +121,8 @@ void NetworkManager::handleSetupConfig(const SetupConfig& config) {
     if (!saveDeviceSettings(settings_)) {
         ESP_LOGW(TAG, "Failed to save setup config");
         setState(NetworkState::NETWORK_ERROR);
-        sendStatus(NetworkStatus::NETWORK_ERROR);
+        snapshot_.connectivity = NetworkStatus::NETWORK_ERROR;
+        sendSnapshot();
         return;
     }
 
@@ -162,14 +166,14 @@ void NetworkManager::init() {
 void NetworkManager::networkTask(void* pvParameters) {
     auto* self = static_cast<NetworkManager*>(pvParameters);
     TickType_t now = 0;
+    Departures latest_departures {};
 
     while(true) {
         if (xQueueReceive(self->network_in_queue_, &self->packet_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
             switch (self->packet_.type) {
                 case NetworkPacketType::WIFI_LINK_EVENT:
-                    self->wifi_link_event_ = self->packet_.wifi_link_event;
-                    ESP_LOGI(TAG, "Packet - WIFI_LINK_EVENT: %d", static_cast<int>(self->wifi_link_event_));
-                    self->handleWifiLinkEvent(self->wifi_link_event_);
+                    ESP_LOGI(TAG, "Packet - WIFI_LINK_EVENT: %d", static_cast<int>(self->packet_.wifi_link_event));
+                    self->handleWifiLinkEvent(self->packet_.wifi_link_event);
                     break;
 
                 case NetworkPacketType::SETUP_CONFIG:
@@ -184,39 +188,53 @@ void NetworkManager::networkTask(void* pvParameters) {
             (now - self->prev_reconnect_attempt_) >= pdMS_TO_TICKS(self->kReconnectTiming_)) {
             if (self->reconnection_attempts_ >= self->kMaxRetries_) {
                 self->setState(NetworkState::NETWORK_ERROR);
-                self->sendStatus(NetworkStatus::NETWORK_ERROR);
+                self->snapshot_.connectivity = NetworkStatus::NETWORK_ERROR;
+                self->sendSnapshot();
             }
             else {
                 self->reconnection_attempts_++;
                 self->prev_reconnect_attempt_ = now;
-                self->sendStatus(NetworkStatus::CONNECTING);
+                self->snapshot_.connectivity = NetworkStatus::CONNECTING;
+                self->sendSnapshot();
                 self->wifi_interface_.setStaMode();
                 self->wifi_interface_.connect();
             }
         }
 
-        if (self->wifi_link_event_ == WifiLinkEvent::LINK_CONNECTED_STA &&
+        if (self->snapshot_.connectivity == NetworkStatus::CONNECTED &&
             (self->prev_api_fetch_ == 0 ||
             (now - self->prev_api_fetch_) >= pdMS_TO_TICKS(self->kApiTiming_))) {
             self->prev_api_fetch_ = now;
 
-            if (!self->apiFetch(&self->http_cfg_)) {
-                self->setState(NetworkState::API_ERROR);
-            }
-            else if (!self->jsonParser(self->api_buffer)) {
-                self->setState(NetworkState::API_ERROR);
-            }
-            else {
+            bool fetch_ok = self->apiFetch() &&
+                self->jsonParser(self->api_buffer, &latest_departures);
+            bool has_cached_data =
+                self->snapshot_.fetch_status == FetchStatus::FRESH ||
+                self->snapshot_.fetch_status == FetchStatus::STALE;
+
+            if (fetch_ok) {
                 self->api_failures_ = 0;
                 self->setState(NetworkState::STA_CONNECTED);
+                self->snapshot_.departures = latest_departures;
+                self->snapshot_.fetch_status = FetchStatus::FRESH;
+                self->sendSnapshot();
+                continue;
+            }
+
+            if (has_cached_data) {
+                if (self->snapshot_.fetch_status != FetchStatus::STALE) {
+                    self->snapshot_.fetch_status = FetchStatus::STALE;
+                    self->sendSnapshot();
+                }
                 continue;
             }
 
             if (self->api_failures_ < self->kMaxApiFailures_) {
                 self->api_failures_++;
 
-                if (self->api_failures_ == self->kMaxApiFailures_) {
-                    self->sendApiError();
+                if (self->api_failures_ >= self->kMaxApiFailures_) {
+                    self->snapshot_.fetch_status = FetchStatus::API_ERROR;
+                    self->sendSnapshot();
                 }
             }
         }
@@ -225,18 +243,17 @@ void NetworkManager::networkTask(void* pvParameters) {
 
 void NetworkManager::handleWifiLinkEvent(WifiLinkEvent event) {
     switch (event) {
-        case WifiLinkEvent::LINK_CONNECTING_STA:
-            setState(NetworkState::STA_CONNECTING);
-            sendStatus(NetworkStatus::CONNECTING);
-            break;
-
         case WifiLinkEvent::LINK_CONNECTED_STA:
             reconnection_attempts_ = 0;
             prev_reconnect_attempt_ = 0;
             prev_api_fetch_ = 0;
             api_failures_ = 0;
             setState(NetworkState::STA_CONNECTED);
-            sendStatus(NetworkStatus::CONNECTED);
+            if (snapshot_.fetch_status == FetchStatus::API_ERROR) {
+                snapshot_.fetch_status = FetchStatus::IDLE;
+            }
+            snapshot_.connectivity = NetworkStatus::CONNECTED;
+            sendSnapshot();
             break;
 
         case WifiLinkEvent::LINK_AP_ACTIVE:
@@ -245,48 +262,39 @@ void NetworkManager::handleWifiLinkEvent(WifiLinkEvent event) {
             prev_api_fetch_ = 0;
             api_failures_ = 0;
             setState(NetworkState::AP_SETUP);
-            sendStatus(NetworkStatus::SETUP);
+            snapshot_.connectivity = NetworkStatus::SETUP;
+            sendSnapshot();
             if (!startSetupPortal(&setup_server_, network_in_queue_)) {
                 setState(NetworkState::NETWORK_ERROR);
-                sendStatus(NetworkStatus::NETWORK_ERROR);
+                snapshot_.connectivity = NetworkStatus::NETWORK_ERROR;
+                sendSnapshot();
             }
             break;
 
-        case WifiLinkEvent::LINK_ERROR:
-            reconnection_attempts_ = 0;
-            prev_reconnect_attempt_ = 0;
-            prev_api_fetch_ = 0;
-            api_failures_ = 0;
-            setState(NetworkState::NETWORK_ERROR);
-            sendStatus(NetworkStatus::NETWORK_ERROR);
-            break;
-
         case WifiLinkEvent::LINK_DISCONNECTED:
-            sendStatus(NetworkStatus::DISCONNECTED);
+            if (snapshot_.fetch_status == FetchStatus::FRESH) {
+                snapshot_.fetch_status = FetchStatus::STALE;
+            }
+            snapshot_.connectivity = NetworkStatus::DISCONNECTED;
+            sendSnapshot();
             prev_api_fetch_ = 0;
             api_failures_ = 0;
             if (network_state_ == NetworkState::STA_CONNECTED ||
                 network_state_ == NetworkState::STA_CONNECTING ||
-                network_state_ == NetworkState::STA_RECONNECTING ||
-                network_state_ == NetworkState::API_ERROR) {
+                network_state_ == NetworkState::STA_RECONNECTING) {
                 prev_reconnect_attempt_ = xTaskGetTickCount();
                 setState(NetworkState::STA_RECONNECTING);
             }
             else {
                 setState(NetworkState::NETWORK_ERROR);
-                sendStatus(NetworkStatus::NETWORK_ERROR);
+                snapshot_.connectivity = NetworkStatus::NETWORK_ERROR;
+                sendSnapshot();
             }
             break;
     }
 }
 
-void NetworkManager::sendApiError() {
-    SystemPacket packet {};
-    packet.type = SystemPacketType::API_ERROR;
-    xQueueSend(system_in_queue_, &packet, 0);
-}
-
-bool NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
+bool NetworkManager::apiFetch() {
     if (api_buffer == nullptr) {
         ESP_LOGW(TAG, "Error allocating api_buffer to heap");
         return false;
@@ -294,7 +302,7 @@ bool NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
 
     ESP_LOGI(TAG, "Fetching API");
 
-    esp_http_client_handle_t client = esp_http_client_init(cfg);
+    esp_http_client_handle_t client = esp_http_client_init(&http_cfg_);
     if (!client) {
         ESP_LOGW(TAG, "Client init failed");
         return false;
@@ -313,7 +321,7 @@ bool NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
         esp_http_client_cleanup(client);
         return false;
     }
-    if (content_length > kMaxApiBufferSize_) {
+    if (content_length >= kMaxApiBufferSize_) {
         ESP_LOGW(TAG, "content_length too large: %d", content_length);
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
@@ -356,7 +364,7 @@ bool NetworkManager::apiFetch(esp_http_client_config_t* cfg) {
     return true;
 }
 
-bool NetworkManager::jsonParser(char* buffer) {
+bool NetworkManager::jsonParser(char* buffer, Departures* departures_out) {
     if (buffer == nullptr) {
         ESP_LOGW(TAG, "No API buffer to parse");
         return false;
@@ -388,9 +396,8 @@ bool NetworkManager::jsonParser(char* buffer) {
 
         cJSON* state = cJSON_GetObjectItem(departure, "state");
         if (!cJSON_IsString(state)) {
-            ESP_LOGW(TAG, "Error parsing state");
-            cJSON_Delete(root);
-            return false;
+            ESP_LOGW(TAG, "Skipping departure without state");
+            continue;
         }
         if (strcmp(state->valuestring, "EXPECTED") != 0) {
             continue;
@@ -400,18 +407,22 @@ bool NetworkManager::jsonParser(char* buffer) {
         cJSON* direction_code_json = cJSON_GetObjectItem(departure, "direction_code");
         cJSON* display = cJSON_GetObjectItem(departure, "display");
         cJSON* line_json = cJSON_GetObjectItem(departure, "line");
+
+        if (!cJSON_IsObject(line_json) ||
+            !cJSON_IsString(destination) ||
+            !cJSON_IsNumber(direction_code_json) ||
+            !cJSON_IsString(display)) {
+            ESP_LOGW(TAG, "Skipping malformed departure");
+            continue;
+        }
+
         cJSON* line_id_json = cJSON_GetObjectItem(line_json, "id");
         cJSON* transport_mode_json = cJSON_GetObjectItem(line_json, "transport_mode");
 
-        if (!cJSON_IsString(destination) ||
-            !cJSON_IsNumber(direction_code_json) ||
-            !cJSON_IsString(display) ||
-            !cJSON_IsObject(line_json) ||
-            !cJSON_IsString(transport_mode_json) ||
+        if (!cJSON_IsString(transport_mode_json) ||
             !cJSON_IsNumber(line_id_json)) {
-            ESP_LOGW(TAG, "Error parsing departure fields");
-            cJSON_Delete(root);
-            return false;
+            ESP_LOGW(TAG, "Skipping malformed departure");
+            continue;
         }
 
         uint8_t direction = direction_code_json->valueint;
@@ -440,13 +451,13 @@ bool NetworkManager::jsonParser(char* buffer) {
         }
 
         ESP_LOGI(TAG, "%s %s", destination->valuestring, display->valuestring);
-        printf("\n");
     }
-    SystemPacket packet {
-        .type = SystemPacketType::DEPARTURES_DATA,
-        .departures = new_departures
-    };
-    xQueueSend(system_in_queue_, &packet, 0);
+    if (departures_out == nullptr) {
+        cJSON_Delete(root);
+        return false;
+    }
+
+    *departures_out = new_departures;
     cJSON_Delete(root);
     return true;
 }

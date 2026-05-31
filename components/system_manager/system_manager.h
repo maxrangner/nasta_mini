@@ -7,6 +7,7 @@
 enum class SystemState {
     BOOT,
     CONNECTING,
+    CONNECTED,
     NO_CONNECTION,
     SETUP,
     DEPARTURES,
@@ -19,16 +20,13 @@ enum class SystemState {
 class SystemManager {
     TaskHandle_t task_system_manager_ = nullptr;
     QueueHandle_t system_in_queue_ = nullptr;
-    QueueHandle_t network_in_queue_ = nullptr;
     static constexpr uint32_t kUpdateInterval_ = 100;
-    SystemPacket packet_ {};
+    NetworkSnapshot snapshot_ {};
     SystemState system_state_ = SystemState::BOOT;
 public:
     SystemManager(Queues* queues);
     void init();
     static void systemTask(void* pvParameters);
     void setState(SystemState new_state);
-    void handleNetworkStatus(NetworkStatus status);
-    void handleDepartures(const Departures& departures);
-    void handleApiError();
+    void updateSystemState();
 };

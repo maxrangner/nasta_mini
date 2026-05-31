@@ -15,7 +15,6 @@ public:
     void start();
     void stop();
     void connect();
-    void disconnect();
     void setStaMode();
     void setApMode();
     void setStaConfig(const WifiSettings& settings);
