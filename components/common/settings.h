@@ -33,6 +33,45 @@ struct DeviceSettings {
     SetupSettings setup {};
 };
 
+enum class SetupState : uint8_t {
+    IDLE,
+    START_AP,
+    WAIT_FOR_CONFIG,
+    SAVE_CONFIG,
+    EXIT_SETUP,
+    ERROR
+};
+
+struct SetupConfig {
+    WifiSettings wifi {};
+    SiteSettings site {};
+    DirectionSettings direction {};
+};
+
+inline bool isValidSetupConfig(const SetupConfig& config) {
+    if (config.wifi.ssid[0] == '\0') {
+        return false;
+    }
+
+    if (config.site.site_id == 0) {
+        return false;
+    }
+
+    if (config.direction.selected_direction != 1 &&
+        config.direction.selected_direction != 2) {
+        return false;
+    }
+
+    return true;
+}
+
+inline void applySetupConfig(DeviceSettings& settings, const SetupConfig& config) {
+    settings.wifi = config.wifi;
+    settings.site = config.site;
+    settings.direction = config.direction;
+    settings.setup.needs_setup = false;
+}
+
 enum class BootMode : uint8_t {
     NORMAL,
     SETUP
