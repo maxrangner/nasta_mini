@@ -64,9 +64,7 @@ void NetworkManager::init() {
 
 void NetworkManager::networkTask(void* pvParameters) {
     auto* self = static_cast<NetworkManager*>(pvParameters);
-    uint32_t now = 0;
-    uint32_t last_api_fetch = 0;
-    uint32_t api_fetch_interval = pdMS_TO_TICKS(10000);
+    TickType_t now = 0;
 
     while(true) {
         if (xQueueReceive(self->network_in_queue_, &self->packet_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
@@ -76,28 +74,45 @@ void NetworkManager::networkTask(void* pvParameters) {
         }
         now = xTaskGetTickCount();
 
-        if (self->retry_pending_ &&
-            (now - self->retry_start_time_) > pdMS_TO_TICKS(self->kRetryDelayMs_)) {
-            self->retry_pending_ = false;
-            self->setState(NetworkState::STA_RECONNECTING);
-            self->sendStatus(NetworkStatus::CONNECTING);
-            self->wifi_interface_.setStaMode();
-            self->wifi_interface_.connect();
+        if (self->network_state_ == NetworkState::STA_RECONNECTING &&
+            (now - self->prev_reconnect_attempt_) >= pdMS_TO_TICKS(self->kReconnectTiming_)) {
+            if (self->reconnection_attempts_ >= self->kMaxRetries_) {
+                self->setState(NetworkState::NETWORK_ERROR);
+                self->sendStatus(NetworkStatus::ERROR);
+            }
+            else {
+                self->reconnection_attempts_++;
+                self->prev_reconnect_attempt_ = now;
+                self->sendStatus(NetworkStatus::CONNECTING);
+                self->wifi_interface_.setStaMode();
+                self->wifi_interface_.connect();
+            }
         }
 
-        if ((now - last_api_fetch > api_fetch_interval) && self->wifi_link_event_ == WifiLinkEvent::LINK_CONNECTED_STA) {
+        if (self->wifi_link_event_ == WifiLinkEvent::LINK_CONNECTED_STA &&
+            (self->prev_api_fetch_ == 0 ||
+            (now - self->prev_api_fetch_) >= pdMS_TO_TICKS(self->kApiTiming_))) {
+            self->prev_api_fetch_ = now;
+
             if (!self->apiFetch(&self->http_cfg_)) {
                 self->setState(NetworkState::API_ERROR);
-                self->sendDataError();
             }
             else if (!self->jsonParser(self->api_buffer)) {
                 self->setState(NetworkState::API_ERROR);
-                self->sendDataError();
             }
             else {
+                self->api_failures_ = 0;
                 self->setState(NetworkState::STA_CONNECTED);
+                continue;
             }
-            last_api_fetch = now;
+
+            if (self->api_failures_ < self->kMaxApiFailures_) {
+                self->api_failures_++;
+
+                if (self->api_failures_ == self->kMaxApiFailures_) {
+                    self->sendDataError();
+                }
+            }
         }
     }
 }
@@ -105,50 +120,46 @@ void NetworkManager::networkTask(void* pvParameters) {
 void NetworkManager::handleWifiLinkEvent(WifiLinkEvent event) {
     switch (event) {
         case WifiLinkEvent::LINK_CONNECTING_STA:
-            retry_pending_ = false;
             setState(NetworkState::STA_CONNECTING);
             sendStatus(NetworkStatus::CONNECTING);
             break;
 
         case WifiLinkEvent::LINK_CONNECTED_STA:
-            retry_pending_ = false;
-            retry_count_ = 0;
+            reconnection_attempts_ = 0;
+            prev_reconnect_attempt_ = 0;
+            prev_api_fetch_ = 0;
+            api_failures_ = 0;
             setState(NetworkState::STA_CONNECTED);
             sendStatus(NetworkStatus::CONNECTED);
             break;
 
         case WifiLinkEvent::LINK_AP_ACTIVE:
-            retry_pending_ = false;
+            reconnection_attempts_ = 0;
+            prev_reconnect_attempt_ = 0;
+            prev_api_fetch_ = 0;
+            api_failures_ = 0;
             setState(NetworkState::AP_SETUP);
             sendStatus(NetworkStatus::SETUP);
             break;
 
         case WifiLinkEvent::LINK_ERROR:
-            retry_pending_ = false;
+            reconnection_attempts_ = 0;
+            prev_reconnect_attempt_ = 0;
+            prev_api_fetch_ = 0;
+            api_failures_ = 0;
             setState(NetworkState::NETWORK_ERROR);
             sendStatus(NetworkStatus::ERROR);
             break;
 
         case WifiLinkEvent::LINK_DISCONNECTED:
             sendStatus(NetworkStatus::DISCONNECTED);
+            prev_api_fetch_ = 0;
+            api_failures_ = 0;
             if (network_state_ == NetworkState::STA_CONNECTED ||
                 network_state_ == NetworkState::STA_CONNECTING ||
                 network_state_ == NetworkState::STA_RECONNECTING ||
                 network_state_ == NetworkState::API_ERROR) {
-                if (retry_pending_) {
-                    break;
-                }
-
-                if (retry_count_ >= kMaxRetries_) {
-                    retry_pending_ = false;
-                    setState(NetworkState::NETWORK_ERROR);
-                    sendStatus(NetworkStatus::ERROR);
-                    break;
-                }
-
-                retry_count_++;
-                retry_pending_ = true;
-                retry_start_time_ = xTaskGetTickCount();
+                prev_reconnect_attempt_ = xTaskGetTickCount();
                 setState(NetworkState::STA_RECONNECTING);
             }
             else {
