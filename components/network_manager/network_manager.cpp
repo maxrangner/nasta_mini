@@ -30,18 +30,6 @@ void NetworkManager::sendStatus(NetworkStatus status) {
     xQueueSend(system_in_queue_, &packet, 0);
 }
 
-bool NetworkManager::hasRequiredSettings() const {
-    if (settings_.wifi.ssid[0] == '\0') {
-        return false;
-    }
-
-    if (settings_.site.site_id == 0) {
-        return false;
-    }
-
-    return true;
-}
-
 bool NetworkManager::buildApiUrl() {
     const char* transport_filter = toTransportModeApiString(settings_.site.transport_filter);
 
@@ -73,16 +61,30 @@ void NetworkManager::init() {
     }
 
     if (!loadDeviceSettings(&settings_)) {
-        ESP_LOGW(TAG, "No stored device settings loaded");
-        setState(NetworkState::NETWORK_ERROR);
-        sendStatus(NetworkStatus::NETWORK_ERROR);
-        return;
+        ESP_LOGI(TAG, "No stored settings loaded, using defaults");
     }
 
-    if (!hasRequiredSettings()) {
-        ESP_LOGW(TAG, "Stored device settings are incomplete");
-        setState(NetworkState::NETWORK_ERROR);
-        sendStatus(NetworkStatus::NETWORK_ERROR);
+    boot_mode_ = decideBootMode(settings_);
+    ESP_LOGI(TAG, "Boot mode -> %d", static_cast<int>(boot_mode_));
+
+    xTaskCreatePinnedToCore(     // UI Task
+        networkTask,               // Function to implement the task
+        "networkTask",             // Name of the task
+        8192,                      // Stack size in words
+        this,                      // Task input parameter
+        1,                         // Priority of the task
+        &task_network_manager_,    // Task handle.
+        0                          // Core where the task should run
+    );
+
+    wifi_interface_.init();
+
+    if (boot_mode_ == BootMode::SETUP) {
+        setState(NetworkState::AP_SETUP);
+        sendStatus(NetworkStatus::SETUP);
+        wifi_interface_.setApMode();
+        wifi_interface_.setApConfig();
+        wifi_interface_.start();
         return;
     }
 
@@ -104,20 +106,11 @@ void NetworkManager::init() {
     http_cfg_.timeout_ms = 5000;
     http_cfg_.crt_bundle_attach = esp_crt_bundle_attach;
 
-    xTaskCreatePinnedToCore(     // UI Task
-        networkTask,               // Function to implement the task
-        "networkTask",             // Name of the task
-        8192,                      // Stack size in words
-        this,                      // Task input parameter
-        1,                         // Priority of the task
-        &task_network_manager_,    // Task handle.
-        0                          // Core where the task should run
-    );
-
-    wifi_interface_.init(settings_.wifi);
+    wifi_interface_.setStaMode();
+    wifi_interface_.setStaConfig(settings_.wifi);
+    wifi_interface_.start();
     setState(NetworkState::STA_CONNECTING);
     sendStatus(NetworkStatus::CONNECTING);
-    wifi_interface_.setStaMode();
     wifi_interface_.connect();
 }
 

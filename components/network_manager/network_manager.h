@@ -40,12 +40,12 @@ class NetworkManager {
     char* api_buffer = nullptr;
     char api_url_[kMaxApiUrlLength_] = {};
     DeviceSettings settings_ {};
+    BootMode boot_mode_ = BootMode::SETUP;
 
     esp_http_client_config_t http_cfg_ {};
     void setState(NetworkState new_state);
     void handleWifiLinkEvent(WifiLinkEvent event);
     void sendStatus(NetworkStatus status);
-    bool hasRequiredSettings() const;
     bool buildApiUrl();
 public:
     NetworkManager(Queues* queues);

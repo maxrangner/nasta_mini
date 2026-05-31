@@ -4,12 +4,13 @@
 #include <string.h>
 
 static const char *TAG = "wifi interface";
+static constexpr const char* kSetupApSsid = "sl-go-mini-setup";
 
 WifiInterface::WifiInterface(QueueHandle_t queue) 
     : network_in_queue_(queue) {
 }
 
-void WifiInterface::init(const WifiSettings& settings) {
+void WifiInterface::init() {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
@@ -24,14 +25,13 @@ void WifiInterface::init(const WifiSettings& settings) {
         IP_EVENT_STA_GOT_IP,
         &wifiEventCallback,
         this);
+    
+    ESP_LOGI(TAG, "wifi init finished");
+}
 
-    setStaMode();
-    wifi_config_t credentials = toWifiConfig(settings);
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &credentials));
+void WifiInterface::start() {
+    ESP_LOGI(TAG, "start");
     ESP_ERROR_CHECK(esp_wifi_start());
-    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-
-    ESP_LOGI(TAG, "wifi_init_sta finished.");
 }
 
 void WifiInterface::connect() {
@@ -54,6 +54,17 @@ void WifiInterface::setApMode() {
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 }
 
+void WifiInterface::setStaConfig(const WifiSettings& settings) {
+    wifi_config_t credentials = toStaConfig(settings);
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &credentials));
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+}
+
+void WifiInterface::setApConfig() {
+    wifi_config_t ap_config = toApConfig();
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+}
+
 void WifiInterface::wifiEventCallback(void* arg, 
     esp_event_base_t event_base,
     int32_t event_id,
@@ -66,7 +77,7 @@ void WifiInterface::wifiEventCallback(void* arg,
         }
 }
 
-wifi_config_t WifiInterface::toWifiConfig(const WifiSettings& settings) {
+wifi_config_t WifiInterface::toStaConfig(const WifiSettings& settings) {
     wifi_config_t credentials = {};
     size_t ssid_length = strnlen(settings.ssid, kMaxWifiSsidLength);
     size_t password_length = strnlen(settings.password, kMaxWifiPasswordLength);
@@ -74,6 +85,19 @@ wifi_config_t WifiInterface::toWifiConfig(const WifiSettings& settings) {
     memcpy(credentials.sta.ssid, settings.ssid, ssid_length);
     memcpy(credentials.sta.password, settings.password, password_length);
     return credentials;
+}
+
+wifi_config_t WifiInterface::toApConfig() {
+    wifi_config_t config = {};
+    size_t ssid_length = strlen(kSetupApSsid);
+
+    memcpy(config.ap.ssid, kSetupApSsid, ssid_length);
+    config.ap.ssid_len = ssid_length;
+    config.ap.max_connection = 4;
+    config.ap.authmode = WIFI_AUTH_OPEN;
+    config.ap.channel = 1;
+
+    return config;
 }
 
 void WifiInterface::sendLinkEvent(WifiLinkEvent event) {
