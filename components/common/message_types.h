@@ -17,7 +17,7 @@ struct NetworkPacket {
 enum class SystemPacketType {
     NETWORK_STATUS,
     DEPARTURES_DATA,
-    DATA_ERROR
+    API_ERROR
 };
 
 enum class NetworkStatus {
@@ -25,7 +25,7 @@ enum class NetworkStatus {
     CONNECTING,
     CONNECTED,
     SETUP,
-    ERROR
+    NETWORK_ERROR
 };
 
 static constexpr uint8_t kMaxDepartureDirections = 2;

@@ -50,7 +50,8 @@ void SystemManager::handleNetworkStatus(NetworkStatus status) {
         case NetworkStatus::CONNECTED:
             if (system_state_ == SystemState::BOOT ||
                 system_state_ == SystemState::NO_CONNECTION ||
-                system_state_ == SystemState::CONNECTING) {
+                system_state_ == SystemState::CONNECTING ||
+                system_state_ == SystemState::NETWORK_ERROR) {
                 setState(SystemState::CONNECTING);
             }
             break;
@@ -59,8 +60,8 @@ void SystemManager::handleNetworkStatus(NetworkStatus status) {
             setState(SystemState::SETUP);
             break;
 
-        case NetworkStatus::ERROR:
-            setState(SystemState::ERROR);
+        case NetworkStatus::NETWORK_ERROR:
+            setState(SystemState::NETWORK_ERROR);
             break;
     }
 }
@@ -74,8 +75,8 @@ void SystemManager::handleDepartures(const Departures& departures) {
     setState(SystemState::DEPARTURES);
 }
 
-void SystemManager::handleDataError() {
-    setState(SystemState::DATA_ERROR);
+void SystemManager::handleApiError() {
+    setState(SystemState::API_ERROR);
 }
 
 void SystemManager::systemTask(void* pvParameters) {
@@ -94,9 +95,9 @@ void SystemManager::systemTask(void* pvParameters) {
                     self->handleDepartures(self->packet_.departures);
                     break;
 
-                case SystemPacketType::DATA_ERROR:
-                    ESP_LOGI(TAG, "Packet - DATA_ERROR");
-                    self->handleDataError();
+                case SystemPacketType::API_ERROR:
+                    ESP_LOGI(TAG, "Packet - API_ERROR");
+                    self->handleApiError();
                     break;
             }
         }

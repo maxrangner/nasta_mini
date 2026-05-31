@@ -48,5 +48,5 @@ public:
 
     bool apiFetch(esp_http_client_config_t* cfg);
     bool jsonParser(char* buffer);
-    void sendDataError();
+    void sendApiError();
 };

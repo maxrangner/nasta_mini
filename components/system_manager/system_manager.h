@@ -11,8 +11,8 @@ enum class SystemState {
     SETUP,
     DEPARTURES,
     NO_DEPARTURES,
-    DATA_ERROR,
-    ERROR
+    API_ERROR,
+    NETWORK_ERROR
 };
 
 // SystemManager owns app-facing state and system-side behavior.
@@ -30,5 +30,5 @@ public:
     void setState(SystemState new_state);
     void handleNetworkStatus(NetworkStatus status);
     void handleDepartures(const Departures& departures);
-    void handleDataError();
+    void handleApiError();
 };

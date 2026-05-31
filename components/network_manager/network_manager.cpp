@@ -78,7 +78,7 @@ void NetworkManager::networkTask(void* pvParameters) {
             (now - self->prev_reconnect_attempt_) >= pdMS_TO_TICKS(self->kReconnectTiming_)) {
             if (self->reconnection_attempts_ >= self->kMaxRetries_) {
                 self->setState(NetworkState::NETWORK_ERROR);
-                self->sendStatus(NetworkStatus::ERROR);
+                self->sendStatus(NetworkStatus::NETWORK_ERROR);
             }
             else {
                 self->reconnection_attempts_++;
@@ -110,7 +110,7 @@ void NetworkManager::networkTask(void* pvParameters) {
                 self->api_failures_++;
 
                 if (self->api_failures_ == self->kMaxApiFailures_) {
-                    self->sendDataError();
+                    self->sendApiError();
                 }
             }
         }
@@ -148,7 +148,7 @@ void NetworkManager::handleWifiLinkEvent(WifiLinkEvent event) {
             prev_api_fetch_ = 0;
             api_failures_ = 0;
             setState(NetworkState::NETWORK_ERROR);
-            sendStatus(NetworkStatus::ERROR);
+            sendStatus(NetworkStatus::NETWORK_ERROR);
             break;
 
         case WifiLinkEvent::LINK_DISCONNECTED:
@@ -164,15 +164,15 @@ void NetworkManager::handleWifiLinkEvent(WifiLinkEvent event) {
             }
             else {
                 setState(NetworkState::NETWORK_ERROR);
-                sendStatus(NetworkStatus::ERROR);
+                sendStatus(NetworkStatus::NETWORK_ERROR);
             }
             break;
     }
 }
 
-void NetworkManager::sendDataError() {
+void NetworkManager::sendApiError() {
     SystemPacket packet {};
-    packet.type = SystemPacketType::DATA_ERROR;
+    packet.type = SystemPacketType::API_ERROR;
     xQueueSend(system_in_queue_, &packet, 0);
 }
 
