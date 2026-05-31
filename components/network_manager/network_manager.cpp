@@ -12,6 +12,15 @@ NetworkManager::NetworkManager(Queues* queues)
       wifi_interface_(queues->network_in_queue) {
 }
 
+void NetworkManager::setState(NetworkState new_state) {
+    if (network_state_ == new_state) {
+        return;
+    }
+
+    network_state_ = new_state;
+    ESP_LOGI(TAG, "State -> %d", static_cast<int>(network_state_));
+}
+
 void NetworkManager::init() {
     if (task_network_manager_ != nullptr) {
         return;
@@ -52,24 +61,66 @@ void NetworkManager::networkTask(void* pvParameters) {
         if (xQueueReceive(self->network_in_queue_, &self->packet_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
             self->wifi_link_event_ = self->packet_.wifi_link_event;
             ESP_LOGI(TAG, "Packet - WIFI_LINK_EVENT: %d", static_cast<int>(self->wifi_link_event_));
-
-            SystemPacket system_packet {};
-            system_packet.type = SystemPacketType::NETWORK_STATUS;
-            system_packet.network_status = self->toNetworkStatus(self->wifi_link_event_);
-
-            xQueueSend(self->system_in_queue_, &system_packet, 0);
+            self->handleWifiLinkEvent(self->wifi_link_event_);
         }
         now = xTaskGetTickCount();
         if ((now - last_api_fetch > api_fetch_interval) && self->wifi_link_event_ == WifiLinkEvent::LINK_CONNECTED_STA) {
             if (!self->apiFetch(&self->http_cfg_)) {
+                self->setState(NetworkState::API_ERROR);
                 self->sendDataError();
             }
             else if (!self->jsonParser(self->api_buffer)) {
+                self->setState(NetworkState::API_ERROR);
                 self->sendDataError();
+            }
+            else {
+                self->setState(NetworkState::STA_CONNECTED);
             }
             last_api_fetch = now;
         }
     }
+}
+
+void NetworkManager::handleWifiLinkEvent(WifiLinkEvent event) {
+    switch (event) {
+        case WifiLinkEvent::LINK_CONNECTING_STA:
+            if (network_state_ == NetworkState::STA_RECONNECTING) {
+                setState(NetworkState::STA_RECONNECTING);
+            }
+            else {
+                setState(NetworkState::STA_CONNECTING);
+            }
+            break;
+
+        case WifiLinkEvent::LINK_CONNECTED_STA:
+            setState(NetworkState::STA_CONNECTED);
+            break;
+
+        case WifiLinkEvent::LINK_AP_ACTIVE:
+            setState(NetworkState::AP_SETUP);
+            break;
+
+        case WifiLinkEvent::LINK_ERROR:
+            setState(NetworkState::NETWORK_ERROR);
+            break;
+
+        case WifiLinkEvent::LINK_DISCONNECTED:
+            if (network_state_ == NetworkState::STA_CONNECTED ||
+                network_state_ == NetworkState::STA_CONNECTING ||
+                network_state_ == NetworkState::STA_RECONNECTING ||
+                network_state_ == NetworkState::API_ERROR) {
+                setState(NetworkState::STA_RECONNECTING);
+            }
+            else {
+                setState(NetworkState::NETWORK_ERROR);
+            }
+            break;
+    }
+
+    SystemPacket system_packet {};
+    system_packet.type = SystemPacketType::NETWORK_STATUS;
+    system_packet.network_status = toNetworkStatus(event);
+    xQueueSend(system_in_queue_, &system_packet, 0);
 }
 
 NetworkStatus NetworkManager::toNetworkStatus(WifiLinkEvent event) {

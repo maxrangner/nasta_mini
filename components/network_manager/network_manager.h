@@ -10,12 +10,15 @@
 
 class NetworkManager {
     enum class NetworkState {
-        ONLINE,
-        OFFLINE,
-        SETUP_PORTAL,
-        API_ERROR
+        INIT,
+        STA_CONNECTING,
+        STA_CONNECTED,
+        STA_RECONNECTING,
+        AP_SETUP,
+        API_ERROR,
+        NETWORK_ERROR
     };
-    NetworkState network_state = NetworkState::OFFLINE;
+    NetworkState network_state_ = NetworkState::INIT;
     TaskHandle_t task_network_manager_ = nullptr;
     QueueHandle_t system_in_queue_ = nullptr;
     QueueHandle_t network_in_queue_ = nullptr;
@@ -28,6 +31,8 @@ class NetworkManager {
     char* api_buffer = nullptr;
 
     esp_http_client_config_t http_cfg_ {};
+    void setState(NetworkState new_state);
+    void handleWifiLinkEvent(WifiLinkEvent event);
 public:
     NetworkManager(Queues* queues);
     void init();
