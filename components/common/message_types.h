@@ -2,18 +2,30 @@
 #include "freertos/FreeRTOS.h"
 #include "types.h"
 
-enum class PacketType {
-    WIFI_UPDATE,
-    API_DATA,
-    SETTINGS_DATA
-};
-
 enum class WifiLinkEvent {
     LINK_DISCONNECTED,
     LINK_CONNECTING_STA,
     LINK_CONNECTED_STA,
     LINK_AP_ACTIVE,
     LINK_ERROR
+};
+
+struct NetworkPacket {
+    WifiLinkEvent wifi_link_event;
+};
+
+enum class SystemPacketType {
+    NETWORK_STATUS,
+    DEPARTURES_DATA,
+    DATA_ERROR
+};
+
+enum class NetworkStatus {
+    DISCONNECTED,
+    CONNECTING,
+    CONNECTED,
+    SETUP,
+    ERROR
 };
 
 struct Departure {
@@ -31,10 +43,10 @@ struct Departures {
     uint8_t num_direction_2;
 };
 
-struct DataPacket {
-    PacketType type;
+struct SystemPacket {
+    SystemPacketType type;
     union {
-        WifiLinkEvent wifi_event;
+        NetworkStatus network_status;
         Departures departures;
     };
 };

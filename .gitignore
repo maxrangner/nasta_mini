@@ -78,3 +78,4 @@ Desktop.ini
 *.sln.docstates # Visual Studio
 credentials.*
 AGENTS.md
+LLM_REDESIGN_FLOW.md
