@@ -32,3 +32,24 @@ struct DeviceSettings {
     DirectionSettings direction {};
     SetupSettings setup {};
 };
+
+enum class BootMode : uint8_t {
+    NORMAL,
+    SETUP
+};
+
+inline BootMode decideBootMode(const DeviceSettings& settings) {
+    if (settings.setup.needs_setup) {
+        return BootMode::SETUP;
+    }
+
+    if (settings.wifi.ssid[0] == '\0') {
+        return BootMode::SETUP;
+    }
+
+    if (settings.site.site_id == 0) {
+        return BootMode::SETUP;
+    }
+
+    return BootMode::NORMAL;
+}
