@@ -4,13 +4,26 @@
 static const char *TAG = "system manager";
 
 SystemManager::SystemManager(Queues* queues)
-    : system_in_queue_(queues->system_in_queue) {
+    : system_in_queue_(queues->system_in_queue),
+      network_in_queue_(queues->network_in_queue) {
 }
 
 void SystemManager::init() {
     if (task_system_manager_ != nullptr) {
         return;
     }
+
+    button_service_init();
+
+    button_cfg_t button_cfg = {
+        .gpio_num = kMainButtonPin_,
+        .hasPullup = kMainButtonHasPullup_,
+        .debounce = kButtonDebounceMs_,
+        .long_press_dur = kButtonLongPressMs_,
+        .btn_callback = handleButtonEvent,
+        .user_data = this,
+    };
+    button_init(&button_cfg, &main_button_);
 
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
 
@@ -25,6 +38,30 @@ void SystemManager::init() {
     );
 }
 
+void SystemManager::handleButtonEvent(button_event_t event, uint8_t gpio_num, void* user_data) {
+    (void)gpio_num;
+
+    auto* self = static_cast<SystemManager*>(user_data);
+    if (self == nullptr) {
+        return;
+    }
+
+    SystemMessage message {};
+    message.type = SystemMessageType::INPUT_EVENT;
+
+    switch (event) {
+        case BTN_SHORT_PRESS:
+            message.input_event = SystemInputEvent::TOGGLE_DIRECTION;
+            break;
+
+        case BTN_LONG_PRESS:
+            message.input_event = SystemInputEvent::FORCE_SETUP;
+            break;
+    }
+
+    xQueueSend(self->system_in_queue_, &message, 0);
+}
+
 void SystemManager::setState(SystemState new_state) {
     if (system_state_ == new_state) {
         return;
@@ -32,6 +69,29 @@ void SystemManager::setState(SystemState new_state) {
 
     system_state_ = new_state;
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
+}
+
+void SystemManager::handleInputEvent(SystemInputEvent event) {
+    switch (event) {
+        case SystemInputEvent::TOGGLE_DIRECTION:
+            selected_direction_++;
+            if (selected_direction_ > kMaxDepartureDirections) {
+                selected_direction_ = 1;
+            }
+            updateRenderState();
+            break;
+
+        case SystemInputEvent::FORCE_SETUP: {
+            NetworkPacket packet {};
+            packet.type = NetworkPacketType::START_SETUP_MODE;
+
+            if (xQueueSend(network_in_queue_, &packet, 0) == pdTRUE) {
+                setState(SystemState::SETUP);
+                updateRenderState();
+            }
+            break;
+        }
+    }
 }
 
 void SystemManager::updateSystemState() {
@@ -119,9 +179,18 @@ void SystemManager::systemTask(void* pvParameters) {
     auto* self = static_cast<SystemManager*>(pvParameters);
 
     while(true) {
-        if (xQueueReceive(self->system_in_queue_, &self->network_state_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
-            self->updateSystemState();
-            self->updateRenderState();
+        if (xQueueReceive(self->system_in_queue_, &self->message_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
+            switch (self->message_.type) {
+                case SystemMessageType::NETWORK_STATE:
+                    self->network_state_ = self->message_.network_state;
+                    self->updateSystemState();
+                    self->updateRenderState();
+                    break;
+
+                case SystemMessageType::INPUT_EVENT:
+                    self->handleInputEvent(self->message_.input_event);
+                    break;
+            }
         }
     }
 }

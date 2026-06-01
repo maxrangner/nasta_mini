@@ -10,7 +10,8 @@ enum class WifiLinkEvent {
 
 enum class NetworkPacketType {
     WIFI_LINK_EVENT,
-    SETUP_CONFIG
+    SETUP_CONFIG,
+    START_SETUP_MODE
 };
 
 struct NetworkPacket {
@@ -79,6 +80,22 @@ struct NetworkSnapshot {
     NetworkStatus connectivity = NetworkStatus::DISCONNECTED;
     FetchStatus fetch_status = FetchStatus::IDLE;
     Departures departures {};
+};
+
+enum class SystemInputEvent {
+    TOGGLE_DIRECTION,
+    FORCE_SETUP
+};
+
+enum class SystemMessageType {
+    NETWORK_STATE,
+    INPUT_EVENT
+};
+
+struct SystemMessage {
+    SystemMessageType type = SystemMessageType::NETWORK_STATE;
+    NetworkSnapshot network_state {};
+    SystemInputEvent input_event = SystemInputEvent::TOGGLE_DIRECTION;
 };
 
 struct RenderState {

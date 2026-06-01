@@ -26,7 +26,10 @@ void NetworkManager::setState(NetworkState new_state) {
 }
 
 void NetworkManager::sendSnapshot() {
-    xQueueSend(system_in_queue_, &snapshot_, 0);
+    SystemMessage message {};
+    message.type = SystemMessageType::NETWORK_STATE;
+    message.network_state = snapshot_;
+    xQueueSend(system_in_queue_, &message, 0);
 }
 
 bool NetworkManager::buildApiUrl() {
@@ -131,6 +134,21 @@ void NetworkManager::handleSetupConfig(const SetupConfig& config) {
     startNormalMode();
 }
 
+void NetworkManager::handleStartSetupMode() {
+    if (network_state_ == NetworkState::AP_SETUP) {
+        return;
+    }
+
+    reconnection_attempts_ = 0;
+    prev_reconnect_attempt_ = 0;
+    prev_api_fetch_ = 0;
+    api_failures_ = 0;
+
+    stopSetupPortal(&setup_server_);
+    wifi_interface_.stop();
+    startSetupMode();
+}
+
 void NetworkManager::init() {
     if (task_network_manager_ != nullptr) {
         return;
@@ -179,6 +197,11 @@ void NetworkManager::networkTask(void* pvParameters) {
                 case NetworkPacketType::SETUP_CONFIG:
                     ESP_LOGI(TAG, "Packet - SETUP_CONFIG");
                     self->handleSetupConfig(self->packet_.setup_config);
+                    break;
+
+                case NetworkPacketType::START_SETUP_MODE:
+                    ESP_LOGI(TAG, "Packet - START_SETUP_MODE");
+                    self->handleStartSetupMode();
                     break;
             }
         }

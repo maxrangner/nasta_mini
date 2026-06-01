@@ -45,6 +45,7 @@ class NetworkManager {
     esp_http_client_config_t http_cfg_ {};
     void setState(NetworkState new_state);
     void handleWifiLinkEvent(WifiLinkEvent event);
+    void handleStartSetupMode();
     void sendSnapshot();
     bool buildApiUrl();
     void startSetupMode();

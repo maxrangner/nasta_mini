@@ -12,7 +12,7 @@ extern "C" void app_main(void)
     systemInit();
 
     Queues queues = {
-        .system_in_queue = xQueueCreate(10, sizeof(NetworkSnapshot)),
+        .system_in_queue = xQueueCreate(10, sizeof(SystemMessage)),
         .network_in_queue = xQueueCreate(10, sizeof(NetworkPacket)),
     };
 
