@@ -182,7 +182,7 @@ void NetworkManager::init() {
 
     wifi_interface_.init();
 
-    xTaskCreatePinnedToCore(     // UI Task
+    xTaskCreatePinnedToCore(       // UI Task
         networkTask,               // Function to implement the task
         "networkTask",             // Name of the task
         8192,                      // Stack size in words

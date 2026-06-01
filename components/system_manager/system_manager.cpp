@@ -32,12 +32,14 @@ void SystemManager::init() {
         .user_data = this,
     };
     button_init(&button_cfg, &main_button_);
+    matrix_.init();
 
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
     ESP_LOGI(TAG, "Boot mode -> %d", static_cast<int>(boot_mode_));
     updateRenderState();
+    renderDisplay();
 
-    xTaskCreatePinnedToCore(     // UI Task
+    xTaskCreatePinnedToCore(       // UI Task
         systemTask,                // Function to implement the task
         "systemTask",              // Name of the task
         8192,                      // Stack size in words
@@ -210,6 +212,71 @@ void SystemManager::updateRenderState() {
         network_state_.departures.directions[selected_direction_ - 1];
 }
 
+void SystemManager::updateAnimationFrame() {
+    animation_frame_++;
+}
+
+void SystemManager::renderDisplay() {
+    switch (render_state_.system_state) {
+        case SystemState::BOOT:
+            matrix_.bootAnimation(animation_frame_);
+            break;
+
+        case SystemState::CONNECTING:
+            matrix_.setColor(0, 0, 16);
+            matrix_.connectionAnimation(animation_frame_);
+            break;
+
+        case SystemState::CONNECTED:
+            matrix_.setColor(0, 16, 0);
+            matrix_.displayIcon(MatrixIcon::OK);
+            break;
+
+        case SystemState::NO_CONNECTION:
+            matrix_.setColor(16, 0, 0);
+            matrix_.connectionAnimation(animation_frame_);
+            break;
+
+        case SystemState::SETUP:
+            matrix_.setColor(0, 16, 16);
+            matrix_.displayIcon(MatrixIcon::HEART);
+            break;
+
+        case SystemState::DEPARTURES:
+            matrix_.setColor(
+                render_state_.stale_data ? 16 : 0,
+                16,
+                0
+            );
+
+            if (render_state_.active_departures.count == 0) {
+                matrix_.displayIcon(MatrixIcon::QUESTION);
+                break;
+            }
+
+            matrix_.displayDeparture(
+                render_state_.active_departures.departures[0].display,
+                animation_frame_
+            );
+            break;
+
+        case SystemState::NO_DEPARTURES:
+            matrix_.setColor(16, 16, 0);
+            matrix_.displayIcon(MatrixIcon::QUESTION);
+            break;
+
+        case SystemState::API_ERROR:
+            matrix_.setColor(16, 0, 0);
+            matrix_.displayIcon(MatrixIcon::QUESTION);
+            break;
+
+        case SystemState::NETWORK_ERROR:
+            matrix_.setColor(16, 0, 0);
+            matrix_.displayIcon(MatrixIcon::CROSS);
+            break;
+    }
+}
+
 const RenderState& SystemManager::getRenderState() const {
     return render_state_;
 }
@@ -236,5 +303,8 @@ void SystemManager::systemTask(void* pvParameters) {
                     break;
             }
         }
+
+        self->updateAnimationFrame();
+        self->renderDisplay();
     }
 }

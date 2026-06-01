@@ -3,9 +3,9 @@
 #include "freertos/task.h"
 #include "app_context.h"
 #include "button_driver.h"
+#include "led_matrix.h"
 #include "message_types.h"
 
-// SystemManager owns app-facing state and system-side behavior.
 class SystemManager {
     static constexpr uint32_t kMainButtonPin_ = 0;
     static constexpr bool kMainButtonHasPullup_ = true;
@@ -16,6 +16,7 @@ class SystemManager {
     QueueHandle_t system_in_queue_ = nullptr;
     QueueHandle_t network_in_queue_ = nullptr;
     static constexpr uint32_t kUpdateInterval_ = 100;
+    LedMatrix matrix_ {};
     button_t main_button_ {};
     SystemMessage message_ {};
     DeviceSettings settings_ {};
@@ -24,6 +25,7 @@ class SystemManager {
     RenderState render_state_ {};
     uint8_t selected_direction_ = 1;
     BootMode boot_mode_ = BootMode::SETUP;
+    uint32_t animation_frame_ = 0;
 public:
     SystemManager(Queues* queues);
     void init();
@@ -35,5 +37,7 @@ public:
     void handleInputEvent(SystemInputEvent event);
     void updateSystemState();
     void updateRenderState();
+    void updateAnimationFrame();
+    void renderDisplay();
     const RenderState& getRenderState() const;
 };
