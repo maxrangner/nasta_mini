@@ -42,7 +42,7 @@ class NetworkManager {
     static constexpr size_t kMaxApiUrlLength_ = 160;
     char* api_buffer = nullptr;
     char api_url_[kMaxApiUrlLength_] = {};
-    DeviceSettings settings_ {};
+    DeviceSettings applied_settings_ {};
     httpd_handle_t setup_server_ = nullptr;
 
     esp_http_client_config_t http_cfg_ {};
@@ -52,12 +52,10 @@ class NetworkManager {
     void handleWifiLinkEvent(WifiLinkEvent event);
     void handleStartNormalMode(const DeviceSettings& settings);
     void handleStartSetupMode();
-    void sendSettingsUpdated();
     void sendSnapshot();
     bool buildApiUrl();
     void startSetupMode();
     void startNormalMode();
-    void handleSetupConfig(const SetupConfig& config);
 public:
     NetworkManager(Queues* queues);
     void init();

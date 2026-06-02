@@ -5,6 +5,14 @@
 static const char *TAG = "system manager";
 static constexpr uint32_t kControlQueueSendTimeoutMs = 10;
 
+static uint8_t normalizeDirection(uint8_t direction) {
+    if (direction < 1 || direction > kMaxDepartureDirections) {
+        return 1;
+    }
+
+    return direction;
+}
+
 static bool sendSystemMessage(
     QueueHandle_t queue,
     const SystemMessage& message,
@@ -133,19 +141,38 @@ void SystemManager::startBootFlow() {
 
 void SystemManager::applySettings(const DeviceSettings& settings) {
     settings_ = settings;
+    settings_.direction.startup_direction =
+        normalizeDirection(settings_.direction.startup_direction);
+    selected_direction_ = settings_.direction.startup_direction;
+}
 
-    if (settings_.direction.selected_direction < 1 ||
-        settings_.direction.selected_direction > kMaxDepartureDirections) {
-        settings_.direction.selected_direction = 1;
+void SystemManager::handleSetupConfig(const SetupConfig& config) {
+    if (!isValidSetupConfig(config)) {
+        ESP_LOGW(TAG, "Rejected invalid setup config");
+        return;
     }
+
+    DeviceSettings updated_settings = settings_;
+    applySetupConfig(updated_settings, config);
+
+    if (!saveDeviceSettings(updated_settings)) {
+        ESP_LOGW(TAG, "Failed to save setup config");
+        setState(SystemState::NETWORK_ERROR);
+        updateRenderState();
+        return;
+    }
+
+    applySettings(updated_settings);
+    updateRenderState();
+    startBootFlow();
 }
 
 void SystemManager::handleInputEvent(SystemInputEvent event) {
     switch (event) {
         case SystemInputEvent::TOGGLE_DIRECTION:
-            settings_.direction.selected_direction++;
-            if (settings_.direction.selected_direction > kMaxDepartureDirections) {
-                settings_.direction.selected_direction = 1;
+            selected_direction_++;
+            if (selected_direction_ > kMaxDepartureDirections) {
+                selected_direction_ = 1;
             }
             updateRenderState();
             break;
@@ -225,7 +252,7 @@ void SystemManager::updateSystemState() {
 }
 
 void SystemManager::updateRenderState() {
-    uint8_t selected_direction = settings_.direction.selected_direction;
+    uint8_t selected_direction = selected_direction_;
 
     render_state_.system_state = system_state_;
     render_state_.selected_direction = selected_direction;
@@ -331,9 +358,8 @@ void SystemManager::systemTask(void* pvParameters) {
                     self->handleInputEvent(self->message_.input_event);
                     break;
 
-                case SystemMessageType::SETTINGS_UPDATED:
-                    self->applySettings(self->message_.device_settings);
-                    self->updateRenderState();
+                case SystemMessageType::SETUP_CONFIG:
+                    self->handleSetupConfig(self->message_.setup_config);
                     break;
             }
         }

@@ -2,7 +2,6 @@
 #include "esp_log.h"
 #include "message_types.h"
 #include "cJSON.h"
-#include "settings_storage.h"
 #include "setup_portal.h"
 #include "utils.h"
 #include <stdlib.h>
@@ -67,25 +66,14 @@ void NetworkManager::sendSnapshot() {
     sendSystemMessage(system_in_queue_, message);
 }
 
-void NetworkManager::sendSettingsUpdated() {
-    SystemMessage message {};
-    message.type = SystemMessageType::SETTINGS_UPDATED;
-    message.device_settings = settings_;
-    sendSystemMessage(
-        system_in_queue_,
-        message,
-        pdMS_TO_TICKS(kControlQueueSendTimeoutMs)
-    );
-}
-
 bool NetworkManager::buildApiUrl() {
-    const char* transport_filter = toTransportModeApiString(settings_.site.transport_filter);
+    const char* transport_filter = toTransportModeApiString(applied_settings_.site.transport_filter);
     const char* transport_filter_log = transport_filter[0] != '\0' ? transport_filter : "ANY";
 
     ESP_LOGI(
         TAG,
         "Fetch config - site_id: %lu, transport: %s",
-        static_cast<unsigned long>(settings_.site.site_id),
+        static_cast<unsigned long>(applied_settings_.site.site_id),
         transport_filter_log
     );
 
@@ -94,7 +82,7 @@ bool NetworkManager::buildApiUrl() {
             api_url_,
             sizeof(api_url_),
             "https://transport.integration.sl.se/v1/sites/%lu/departures?forecast=500",
-            static_cast<unsigned long>(settings_.site.site_id)
+            static_cast<unsigned long>(applied_settings_.site.site_id)
         );
 
         return written > 0 && written < sizeof(api_url_);
@@ -104,7 +92,7 @@ bool NetworkManager::buildApiUrl() {
         api_url_,
         sizeof(api_url_),
         "https://transport.integration.sl.se/v1/sites/%lu/departures?transport=%s&forecast=500",
-        static_cast<unsigned long>(settings_.site.site_id),
+        static_cast<unsigned long>(applied_settings_.site.site_id),
         transport_filter
     );
 
@@ -156,7 +144,7 @@ void NetworkManager::startNormalMode() {
     if (!handleWifiError(wifi_interface_.setStaMode(), "set STA mode")) {
         return;
     }
-    if (!handleWifiError(wifi_interface_.setStaConfig(settings_.wifi), "set STA config")) {
+    if (!handleWifiError(wifi_interface_.setStaConfig(applied_settings_.wifi), "set STA config")) {
         return;
     }
     if (!handleWifiError(wifi_interface_.start(), "start STA mode")) {
@@ -172,7 +160,7 @@ void NetworkManager::startNormalMode() {
 }
 
 void NetworkManager::handleStartNormalMode(const DeviceSettings& settings) {
-    settings_ = settings;
+    applied_settings_ = settings;
     resetRuntimeState();
     waiting_for_ap_start_ = false;
 
@@ -185,26 +173,6 @@ void NetworkManager::handleStartNormalMode(const DeviceSettings& settings) {
     }
 
     startNormalMode();
-}
-
-void NetworkManager::handleSetupConfig(const SetupConfig& config) {
-    if (!isValidSetupConfig(config)) {
-        ESP_LOGW(TAG, "Rejected invalid setup config");
-        return;
-    }
-
-    applySetupConfig(settings_, config);
-
-    if (!saveDeviceSettings(settings_)) {
-        ESP_LOGW(TAG, "Failed to save setup config");
-        setState(NetworkState::NETWORK_ERROR);
-        snapshot_.connectivity = NetworkStatus::NETWORK_ERROR;
-        sendSnapshot();
-        return;
-    }
-
-    sendSettingsUpdated();
-    handleStartNormalMode(settings_);
 }
 
 void NetworkManager::handleStartSetupMode() {
@@ -256,11 +224,6 @@ void NetworkManager::networkTask(void* pvParameters) {
                 case NetworkPacketType::WIFI_LINK_EVENT:
                     ESP_LOGI(TAG, "Packet - WIFI_LINK_EVENT: %d", static_cast<int>(self->packet_.wifi_link_event));
                     self->handleWifiLinkEvent(self->packet_.wifi_link_event);
-                    break;
-
-                case NetworkPacketType::SETUP_CONFIG:
-                    ESP_LOGI(TAG, "Packet - SETUP_CONFIG");
-                    self->handleSetupConfig(self->packet_.setup_config);
                     break;
 
                 case NetworkPacketType::START_SETUP_MODE:
@@ -365,7 +328,7 @@ void NetworkManager::handleWifiLinkEvent(WifiLinkEvent event) {
             api_failures_ = 0;
             waiting_for_ap_start_ = false;
             setState(NetworkState::AP_SETUP);
-            if (!startSetupPortal(&setup_server_, network_in_queue_)) {
+            if (!startSetupPortal(&setup_server_, system_in_queue_)) {
                 setState(NetworkState::NETWORK_ERROR);
                 snapshot_.connectivity = NetworkStatus::NETWORK_ERROR;
                 sendSnapshot();
@@ -590,8 +553,8 @@ bool NetworkManager::jsonParser(char* buffer, Departures* departures_out) {
         uint8_t line_number = line_id_json->valueint;
         TransportMode transport_mode = toTransportMode(transport_mode_json->valuestring);
 
-        if (settings_.site.transport_filter != TransportMode::UNKNOWN &&
-            transport_mode != settings_.site.transport_filter) {
+        if (applied_settings_.site.transport_filter != TransportMode::UNKNOWN &&
+            transport_mode != applied_settings_.site.transport_filter) {
             continue;
         }
 

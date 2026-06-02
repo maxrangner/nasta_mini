@@ -24,6 +24,7 @@ class SystemManager {
     SystemState system_state_ = SystemState::BOOT;
     RenderState render_state_ {};
     uint32_t animation_frame_ = 0;
+    uint8_t selected_direction_ = 1;
 public:
     SystemManager(Queues* queues);
     void init();
@@ -31,6 +32,7 @@ public:
     static void handleButtonEvent(button_event_t event, uint8_t gpio_num, void* user_data);
     void startBootFlow();
     void applySettings(const DeviceSettings& settings);
+    void handleSetupConfig(const SetupConfig& config);
     void setState(SystemState new_state);
     void handleInputEvent(SystemInputEvent event);
     void updateSystemState();

@@ -18,7 +18,7 @@ struct SiteSettings {
 };
 
 struct DirectionSettings {
-    uint8_t selected_direction = 1;
+    uint8_t startup_direction = 1;
 };
 
 struct SetupSettings {
@@ -48,8 +48,8 @@ inline bool isValidSetupConfig(const SetupConfig& config) {
         return false;
     }
 
-    if (config.direction.selected_direction != 1 &&
-        config.direction.selected_direction != 2) {
+    if (config.direction.startup_direction != 1 &&
+        config.direction.startup_direction != 2) {
         return false;
     }
 
@@ -59,7 +59,7 @@ inline bool isValidSetupConfig(const SetupConfig& config) {
 inline void applySetupConfig(DeviceSettings& settings, const SetupConfig& config) {
     settings.wifi = config.wifi;
     settings.site = config.site;
-    settings.direction = config.direction;
+    settings.direction.startup_direction = config.direction.startup_direction;
     settings.setup.needs_setup = false;
 }
 

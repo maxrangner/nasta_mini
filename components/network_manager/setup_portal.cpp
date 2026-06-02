@@ -57,7 +57,7 @@ button { margin-top: 20px; }
 <option value="BUS">Bus</option>
 <option value="TRAM">Tram</option>
 </select>
-<label for="direction">Selected direction</label>
+<label for="direction">Startup direction</label>
 <select id="direction" name="direction">
 <option value="1">Direction 1</option>
 <option value="2">Direction 2</option>
@@ -120,11 +120,11 @@ static void urlDecode(char* destination, size_t destination_size, const char* so
     destination[write_index] = '\0';
 }
 
-static bool queueSetupConfig(QueueHandle_t network_in_queue, const SetupConfig& config) {
-    NetworkPacket packet {};
-    packet.type = NetworkPacketType::SETUP_CONFIG;
-    packet.setup_config = config;
-    return xQueueSend(network_in_queue, &packet, 0) == pdTRUE;
+static bool queueSetupConfig(QueueHandle_t system_in_queue, const SetupConfig& config) {
+    SystemMessage message {};
+    message.type = SystemMessageType::SETUP_CONFIG;
+    message.setup_config = config;
+    return xQueueSend(system_in_queue, &message, 0) == pdTRUE;
 }
 
 static esp_err_t sendSetupErrorResponse(httpd_req_t* req) {
@@ -139,7 +139,7 @@ static esp_err_t handleSetupPageRequest(httpd_req_t* req) {
 }
 
 static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
-    QueueHandle_t network_in_queue = reinterpret_cast<QueueHandle_t>(req->user_ctx);
+    QueueHandle_t system_in_queue = reinterpret_cast<QueueHandle_t>(req->user_ctx);
     char body[kMaxSetupRequestLength] = {};
 
     if (req->content_len <= 0 || req->content_len >= sizeof(body)) {
@@ -188,10 +188,10 @@ static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
     if (direction_end == direction_buffer || *direction_end != '\0') {
         return sendSetupErrorResponse(req);
     }
-    config.direction.selected_direction = static_cast<uint8_t>(direction);
+    config.direction.startup_direction = static_cast<uint8_t>(direction);
     config.site.transport_filter = toTransportMode(transport_buffer);
 
-    if (!isValidSetupConfig(config) || !queueSetupConfig(network_in_queue, config)) {
+    if (!isValidSetupConfig(config) || !queueSetupConfig(system_in_queue, config)) {
         return sendSetupErrorResponse(req);
     }
 
@@ -199,7 +199,7 @@ static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
     return httpd_resp_send(req, kSetupSavedPage, HTTPD_RESP_USE_STRLEN);
 }
 
-bool startSetupPortal(httpd_handle_t* server, QueueHandle_t network_in_queue) {
+bool startSetupPortal(httpd_handle_t* server, QueueHandle_t system_in_queue) {
     if (server == nullptr) {
         return false;
     }
@@ -222,14 +222,14 @@ bool startSetupPortal(httpd_handle_t* server, QueueHandle_t network_in_queue) {
         .uri = "/",
         .method = HTTP_GET,
         .handler = &handleSetupPageRequest,
-        .user_ctx = network_in_queue
+        .user_ctx = system_in_queue
     };
 
     httpd_uri_t save_handler = {
         .uri = "/save",
         .method = HTTP_POST,
         .handler = &handleSetupSaveRequest,
-        .user_ctx = network_in_queue
+        .user_ctx = system_in_queue
     };
 
     httpd_register_uri_handler(*server, &page_handler);
