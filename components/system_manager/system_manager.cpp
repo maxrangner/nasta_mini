@@ -3,6 +3,33 @@
 #include "settings_storage.h"
 
 static const char *TAG = "system manager";
+static constexpr uint32_t kControlQueueSendTimeoutMs = 10;
+
+static bool sendSystemMessage(
+    QueueHandle_t queue,
+    const SystemMessage& message,
+    TickType_t wait_ticks = 0
+) {
+    if (xQueueSend(queue, &message, wait_ticks) == pdTRUE) {
+        return true;
+    }
+
+    ESP_LOGW(TAG, "Failed to queue system message: %d", static_cast<int>(message.type));
+    return false;
+}
+
+static bool sendNetworkPacket(
+    QueueHandle_t queue,
+    const NetworkPacket& packet,
+    TickType_t wait_ticks = 0
+) {
+    if (xQueueSend(queue, &packet, wait_ticks) == pdTRUE) {
+        return true;
+    }
+
+    ESP_LOGW(TAG, "Failed to queue network packet: %d", static_cast<int>(packet.type));
+    return false;
+}
 
 SystemManager::SystemManager(Queues* queues)
     : system_in_queue_(queues->system_in_queue),
@@ -73,7 +100,7 @@ void SystemManager::handleButtonEvent(button_event_t event, uint8_t gpio_num, vo
             break;
     }
 
-    xQueueSend(self->system_in_queue_, &message, 0);
+    sendSystemMessage(self->system_in_queue_, message);
 }
 
 void SystemManager::setState(SystemState new_state) {
@@ -97,7 +124,11 @@ void SystemManager::startBootFlow() {
         packet.device_settings = settings_;
     }
 
-    xQueueSend(network_in_queue_, &packet, 0);
+    sendNetworkPacket(
+        network_in_queue_,
+        packet,
+        pdMS_TO_TICKS(kControlQueueSendTimeoutMs)
+    );
 }
 
 void SystemManager::applySettings(const DeviceSettings& settings) {
@@ -123,7 +154,11 @@ void SystemManager::handleInputEvent(SystemInputEvent event) {
             NetworkPacket packet {};
             packet.type = NetworkPacketType::START_SETUP_MODE;
 
-            if (xQueueSend(network_in_queue_, &packet, 0) == pdTRUE) {
+            if (sendNetworkPacket(
+                network_in_queue_,
+                packet,
+                pdMS_TO_TICKS(kControlQueueSendTimeoutMs)
+            )) {
                 setState(SystemState::SETUP);
                 updateRenderState();
             }

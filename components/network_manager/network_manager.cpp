@@ -9,6 +9,20 @@
 #include <string.h>
 
 static const char *TAG = "network manager";
+static constexpr uint32_t kControlQueueSendTimeoutMs = 10;
+
+static bool sendSystemMessage(
+    QueueHandle_t queue,
+    const SystemMessage& message,
+    TickType_t wait_ticks = 0
+) {
+    if (xQueueSend(queue, &message, wait_ticks) == pdTRUE) {
+        return true;
+    }
+
+    ESP_LOGW(TAG, "Failed to queue system message: %d", static_cast<int>(message.type));
+    return false;
+}
 
 NetworkManager::NetworkManager(Queues* queues)
     : system_in_queue_(queues->system_in_queue),
@@ -50,14 +64,18 @@ void NetworkManager::sendSnapshot() {
     SystemMessage message {};
     message.type = SystemMessageType::NETWORK_STATE;
     message.network_state = snapshot_;
-    xQueueSend(system_in_queue_, &message, 0);
+    sendSystemMessage(system_in_queue_, message);
 }
 
 void NetworkManager::sendSettingsUpdated() {
     SystemMessage message {};
     message.type = SystemMessageType::SETTINGS_UPDATED;
     message.device_settings = settings_;
-    xQueueSend(system_in_queue_, &message, 0);
+    sendSystemMessage(
+        system_in_queue_,
+        message,
+        pdMS_TO_TICKS(kControlQueueSendTimeoutMs)
+    );
 }
 
 bool NetworkManager::buildApiUrl() {
