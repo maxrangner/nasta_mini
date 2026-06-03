@@ -1,25 +1,11 @@
 #include "wifi_interface.h"
 #include "esp_log.h"
 #include "esp_netif.h"
-#include "message_types.h"
 #include <string.h>
 
 static const char *TAG = "wifi interface";
 static constexpr const char* kSetupApSsid = "sl-go-mini-setup";
 static constexpr uint32_t kLinkEventSendTimeoutMs = 10;
-
-static bool sendNetworkCommand(
-    QueueHandle_t queue,
-    const NetworkCommand& command,
-    TickType_t wait_ticks = 0
-) {
-    if (xQueueSend(queue, &command, wait_ticks) == pdTRUE) {
-        return true;
-    }
-
-    ESP_LOGW(TAG, "Failed to queue network command: %d", static_cast<int>(command.type));
-    return false;
-}
 
 WifiInterface::WifiInterface(QueueHandle_t queue) 
     : network_in_queue_(queue) {
@@ -113,12 +99,12 @@ void WifiInterface::wifiEventCallback(void* arg,
     esp_event_base_t event_base,
     int32_t event_id,
     void* event_data) {
-        (void)event_data;
-        auto* self = static_cast<WifiInterface*>(arg);
-        WifiLinkEvent event {};
-        if (self->toWifiLinkEvent(event_base, event_id, &event)) {
-            self->sendLinkEvent(event);
-        }
+    (void)event_data;
+    auto* self = static_cast<WifiInterface*>(arg);
+    WifiLinkEvent event {};
+    if (self->toWifiLinkEvent(event_base, event_id, &event)) {
+        self->sendLinkEvent(event);
+    }
 }
 
 wifi_config_t WifiInterface::toStaConfig(const WifiSettings& settings) {
@@ -148,11 +134,13 @@ void WifiInterface::sendLinkEvent(WifiLinkEvent event) {
     NetworkCommand command {};
     command.type = NetworkCommandType::WIFI_LINK_EVENT;
     command.wifi_link_event = event;
-    sendNetworkCommand(
+    if (xQueueSend(
         network_in_queue_,
-        command,
+        &command,
         pdMS_TO_TICKS(kLinkEventSendTimeoutMs)
-    );
+    ) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to queue network command: %d", static_cast<int>(command.type));
+    }
 }
 
 bool WifiInterface::toWifiLinkEvent(esp_event_base_t base, int32_t id, WifiLinkEvent* event) {

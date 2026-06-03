@@ -1,6 +1,5 @@
 #include "network_manager.h"
 #include "esp_log.h"
-#include "message_types.h"
 #include "cJSON.h"
 #include "setup_portal.h"
 #include "utils.h"
@@ -8,19 +7,6 @@
 #include <string.h>
 
 static const char *TAG = "network manager";
-
-static bool sendSystemEvent(
-    QueueHandle_t queue,
-    const SystemEvent& event,
-    TickType_t wait_ticks = 0
-) {
-    if (xQueueSend(queue, &event, wait_ticks) == pdTRUE) {
-        return true;
-    }
-
-    ESP_LOGW(TAG, "Failed to queue system event: %d", static_cast<int>(event.type));
-    return false;
-}
 
 NetworkManager::NetworkManager(Queues* queues)
     : system_in_queue_(queues->system_in_queue),
@@ -60,7 +46,9 @@ void NetworkManager::sendNetworkState() {
     SystemEvent event {};
     event.type = SystemEventType::NETWORK_STATE;
     event.network_state = network_state_;
-    sendSystemEvent(system_in_queue_, event);
+    if (xQueueSend(system_in_queue_, &event, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to queue system event: %d", static_cast<int>(event.type));
+    }
 }
 
 bool NetworkManager::buildApiUrl() {
@@ -217,13 +205,14 @@ void NetworkManager::networkTask(void* pvParameters) {
     auto* self = static_cast<NetworkManager*>(pvParameters);
     TickType_t now = 0;
     Departures latest_departures {};
+    NetworkCommand command {};
 
     while(true) {
-        if (xQueueReceive(self->network_in_queue_, &self->command_, pdMS_TO_TICKS(self->kUpdateInterval_))) {
-            switch (self->command_.type) {
+        if (xQueueReceive(self->network_in_queue_, &command, pdMS_TO_TICKS(self->kUpdateInterval_))) {
+            switch (command.type) {
                 case NetworkCommandType::WIFI_LINK_EVENT:
-                    ESP_LOGI(TAG, "Command - WIFI_LINK_EVENT: %d", static_cast<int>(self->command_.wifi_link_event));
-                    self->handleWifiLinkEvent(self->command_.wifi_link_event);
+                    ESP_LOGI(TAG, "Command - WIFI_LINK_EVENT: %d", static_cast<int>(command.wifi_link_event));
+                    self->handleWifiLinkEvent(command.wifi_link_event);
                     break;
 
                 case NetworkCommandType::START_SETUP_MODE:
@@ -233,7 +222,7 @@ void NetworkManager::networkTask(void* pvParameters) {
 
                 case NetworkCommandType::START_NORMAL_MODE:
                     ESP_LOGI(TAG, "Command - START_NORMAL_MODE");
-                    self->handleStartNormalMode(self->command_.settings);
+                    self->handleStartNormalMode(command.settings);
                     break;
             }
         }
@@ -490,7 +479,7 @@ bool NetworkManager::apiFetch() {
     return true;
 }
 
-bool NetworkManager::jsonParser(char* buffer, Departures* departures_out) {
+bool NetworkManager::jsonParser(const char* buffer, Departures* departures_out) {
     if (buffer == nullptr) {
         ESP_LOGW(TAG, "No API buffer to parse");
         return false;
@@ -529,30 +518,25 @@ bool NetworkManager::jsonParser(char* buffer, Departures* departures_out) {
             continue;
         }
 
-        cJSON* destination = cJSON_GetObjectItem(departure, "destination");
         cJSON* direction_code_json = cJSON_GetObjectItem(departure, "direction_code");
         cJSON* display = cJSON_GetObjectItem(departure, "display");
         cJSON* line_json = cJSON_GetObjectItem(departure, "line");
 
         if (!cJSON_IsObject(line_json) ||
-            !cJSON_IsString(destination) ||
             !cJSON_IsNumber(direction_code_json) ||
             !cJSON_IsString(display)) {
             ESP_LOGW(TAG, "Skipping malformed departure");
             continue;
         }
 
-        cJSON* line_id_json = cJSON_GetObjectItem(line_json, "id");
         cJSON* transport_mode_json = cJSON_GetObjectItem(line_json, "transport_mode");
 
-        if (!cJSON_IsString(transport_mode_json) ||
-            !cJSON_IsNumber(line_id_json)) {
+        if (!cJSON_IsString(transport_mode_json)) {
             ESP_LOGW(TAG, "Skipping malformed departure");
             continue;
         }
 
         uint8_t direction = direction_code_json->valueint;
-        uint8_t line_number = line_id_json->valueint;
         TransportMode transport_mode = toTransportMode(transport_mode_json->valuestring);
 
         if (applied_settings_.site.transport_filter != TransportMode::UNKNOWN &&
@@ -560,10 +544,7 @@ bool NetworkManager::jsonParser(char* buffer, Departures* departures_out) {
             continue;
         }
 
-        snprintf(new_departure.destination, sizeof(new_departure.destination), "%s", destination->valuestring);
         snprintf(new_departure.display, sizeof(new_departure.display), "%s", display->valuestring);
-        new_departure.transport_mode = transport_mode;
-        new_departure.line = line_number;
 
         if (direction >= 1 &&
             direction <= kMaxDepartureDirections) {
@@ -575,8 +556,6 @@ bool NetworkManager::jsonParser(char* buffer, Departures* departures_out) {
                 direction_departures.count++;
             }
         }
-
-        ESP_LOGI(TAG, "%s %s", destination->valuestring, display->valuestring);
     }
     if (departures_out == nullptr) {
         cJSON_Delete(root);

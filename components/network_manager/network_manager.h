@@ -20,7 +20,6 @@ class NetworkManager {
     QueueHandle_t system_in_queue_ = nullptr;
     QueueHandle_t network_in_queue_ = nullptr;
     WifiInterface wifi_interface_;
-    NetworkCommand command_ {};
     NetworkState network_state_ {};
     TickType_t prev_reconnect_attempt_ = 0;
     TickType_t prev_api_fetch_ = 0;
@@ -55,8 +54,10 @@ class NetworkManager {
 public:
     NetworkManager(Queues* queues);
     void init();
+
+private:
     static void networkTask(void* pvParameters);
 
     bool apiFetch();
-    bool jsonParser(char* buffer, Departures* departures);
+    bool jsonParser(const char* buffer, Departures* departures);
 };

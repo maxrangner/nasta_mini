@@ -1,7 +1,6 @@
 #pragma once
 #include <stdint.h>
 #include "settings.h"
-#include "types.h"
 
 enum class WifiLinkEvent {
     LINK_DISCONNECTED,
@@ -49,10 +48,7 @@ static constexpr uint8_t kMaxDepartureDirections = 2;
 static constexpr uint8_t kMaxDeparturesPerDirection = 3;
 
 struct Departure {
-    char destination[20];
     char display[10];
-    TransportMode transport_mode;
-    uint8_t line;
 };
 
 struct DirectionDepartures {

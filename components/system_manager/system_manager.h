@@ -18,7 +18,6 @@ class SystemManager {
     static constexpr uint32_t kUpdateInterval_ = 100;
     LedMatrix matrix_ {};
     button_t main_button_ {};
-    SystemEvent system_event_ {};
     DeviceSettings settings_ {};
     NetworkState network_state_ {};
     SystemState system_state_ = SystemState::BOOT;
@@ -27,14 +26,14 @@ class SystemManager {
 public:
     SystemManager(Queues* queues);
     void init();
+
+private:
     static void systemTask(void* pvParameters);
     static void handleButtonCallback(button_event_t event, uint8_t gpio_num, void* user_data);
-    void startBootFlow();
     void applySettings(const DeviceSettings& settings);
     void handleSetupConfig(const SetupConfig& config);
     void setState(SystemState new_state);
     void handleButtonInput(SystemInputEvent event);
     void setSystemState();
-    void updateAnimationFrame();
     void renderDisplay();
 };

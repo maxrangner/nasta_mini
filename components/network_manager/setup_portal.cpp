@@ -120,13 +120,6 @@ static void urlDecode(char* destination, size_t destination_size, const char* so
     destination[write_index] = '\0';
 }
 
-static bool queueSetupConfig(QueueHandle_t system_in_queue, const SetupConfig& config) {
-    SystemEvent event {};
-    event.type = SystemEventType::SETUP_CONFIG;
-    event.setup_config = config;
-    return xQueueSend(system_in_queue, &event, 0) == pdTRUE;
-}
-
 static esp_err_t sendSetupErrorResponse(httpd_req_t* req) {
     httpd_resp_set_status(req, "400 Bad Request");
     httpd_resp_set_type(req, "text/html");
@@ -191,7 +184,15 @@ static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
     config.direction.startup_direction = static_cast<uint8_t>(direction);
     config.site.transport_filter = toTransportMode(transport_buffer);
 
-    if (!isValidSetupConfig(config) || !queueSetupConfig(system_in_queue, config)) {
+    if (!isValidSetupConfig(config)) {
+        return sendSetupErrorResponse(req);
+    }
+
+    SystemEvent event {};
+    event.type = SystemEventType::SETUP_CONFIG;
+    event.setup_config = config;
+
+    if (xQueueSend(system_in_queue, &event, 0) != pdTRUE) {
         return sendSetupErrorResponse(req);
     }
 

@@ -31,19 +31,6 @@ static DirectionDepartures getActiveDepartures(
     return network_state.departures.directions[selected_direction - 1];
 }
 
-static bool sendSystemEvent(
-    QueueHandle_t queue,
-    const SystemEvent& event,
-    TickType_t wait_ticks = 0
-) {
-    if (xQueueSend(queue, &event, wait_ticks) == pdTRUE) {
-        return true;
-    }
-
-    ESP_LOGW(TAG, "Failed to queue system event: %d", static_cast<int>(event.type));
-    return false;
-}
-
 static bool sendNetworkCommand(
     QueueHandle_t queue,
     const NetworkCommand& command,
@@ -101,7 +88,21 @@ void SystemManager::init() {
         0                          // Core where the task should run
     );
 
-    startBootFlow();
+    NetworkCommand command {};
+
+    if (boot_mode == BootMode::SETUP) {
+        command.type = NetworkCommandType::START_SETUP_MODE;
+    }
+    else {
+        command.type = NetworkCommandType::START_NORMAL_MODE;
+        command.settings = settings_;
+    }
+
+    sendNetworkCommand(
+        network_in_queue_,
+        command,
+        pdMS_TO_TICKS(kControlQueueSendTimeoutMs)
+    );
 }
 
 void SystemManager::handleButtonCallback(button_event_t event, uint8_t gpio_num, void* user_data) {
@@ -123,9 +124,14 @@ void SystemManager::handleButtonCallback(button_event_t event, uint8_t gpio_num,
         case BTN_LONG_PRESS:
             system_event.input_event = SystemInputEvent::FORCE_SETUP;
             break;
+
+        default:
+            return;
     }
 
-    sendSystemEvent(self->system_in_queue_, system_event);
+    if (xQueueSend(self->system_in_queue_, &system_event, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to queue system event: %d", static_cast<int>(system_event.type));
+    }
 }
 
 void SystemManager::setState(SystemState new_state) {
@@ -135,25 +141,6 @@ void SystemManager::setState(SystemState new_state) {
 
     system_state_ = new_state;
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
-}
-
-void SystemManager::startBootFlow() {
-    NetworkCommand command {};
-    BootMode boot_mode = decideBootMode(settings_);
-
-    if (boot_mode == BootMode::SETUP) {
-        command.type = NetworkCommandType::START_SETUP_MODE;
-    }
-    else {
-        command.type = NetworkCommandType::START_NORMAL_MODE;
-        command.settings = settings_;
-    }
-
-    sendNetworkCommand(
-        network_in_queue_,
-        command,
-        pdMS_TO_TICKS(kControlQueueSendTimeoutMs)
-    );
 }
 
 void SystemManager::applySettings(const DeviceSettings& settings) {
@@ -262,10 +249,6 @@ void SystemManager::setSystemState() {
     setState(new_state);
 }
 
-void SystemManager::updateAnimationFrame() {
-    animation_frame_++;
-}
-
 void SystemManager::renderDisplay() {
     DirectionDepartures active_departures =
         getActiveDepartures(network_state_, system_state_, selected_direction_);
@@ -327,30 +310,31 @@ void SystemManager::renderDisplay() {
 
 void SystemManager::systemTask(void* pvParameters) {
     auto* self = static_cast<SystemManager*>(pvParameters);
+    SystemEvent system_event {};
 
     while(true) {
         if (xQueueReceive(
             self->system_in_queue_,
-            &self->system_event_,
+            &system_event,
             pdMS_TO_TICKS(self->kUpdateInterval_)
         ) == pdTRUE) {
-            switch (self->system_event_.type) {
+            switch (system_event.type) {
                 case SystemEventType::NETWORK_STATE:
-                    self->network_state_ = self->system_event_.network_state;
+                    self->network_state_ = system_event.network_state;
                     self->setSystemState();
                     break;
 
                 case SystemEventType::INPUT_EVENT:
-                    self->handleButtonInput(self->system_event_.input_event);
+                    self->handleButtonInput(system_event.input_event);
                     break;
 
                 case SystemEventType::SETUP_CONFIG:
-                    self->handleSetupConfig(self->system_event_.setup_config);
+                    self->handleSetupConfig(system_event.setup_config);
                     break;
             }
         }
 
-        self->updateAnimationFrame();
+        self->animation_frame_++;
         self->renderDisplay();
     }
 }
