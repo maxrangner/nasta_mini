@@ -1,0 +1,6 @@
+.pio
+.vscode/
+docs/
+credentials.h
+static-json-response.txt
+TODO.md
