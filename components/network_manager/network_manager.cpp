@@ -249,10 +249,101 @@ void NetworkManager::init() {
     );
 }
 
+void NetworkManager::processReconnect(TickType_t now) {
+    bool reconnect_due =
+        mode_ == NetworkMode::NORMAL &&
+        network_state_.phase == NetworkPhase::CONNECTING &&
+        prev_reconnect_attempt_ != 0 &&
+        (now - prev_reconnect_attempt_) >= pdMS_TO_TICKS(kReconnectTiming_);
+
+    if (!reconnect_due) {
+        return;
+    }
+
+    if (reconnection_attempts_ >= kMaxRetries_) {
+        ESP_LOGW(TAG, "Too many Wi-Fi reconnect failures, switching to setup mode");
+        startSetupMode();
+        return;
+    }
+
+    reconnection_attempts_++;
+    prev_reconnect_attempt_ = now;
+    sendNetworkState();
+
+    if (!handleWifiError(wifi_interface_.setStaMode(), "set STA mode")) {
+        return;
+    }
+
+    handleWifiError(wifi_interface_.connect(), "connect STA");
+}
+
+void NetworkManager::updateStaleData(TickType_t now) {
+    bool stale_timeout_reached =
+        network_state_.phase == NetworkPhase::READY &&
+        network_state_.departure_state == DepartureState::READY &&
+        !network_state_.stale_data &&
+        last_successful_fetch_ != 0 &&
+        (now - last_successful_fetch_) >= pdMS_TO_TICKS(kStaleDataTiming_);
+
+    if (!stale_timeout_reached) {
+        return;
+    }
+
+    network_state_.stale_data = true;
+    sendNetworkState();
+}
+
+void NetworkManager::fetchDepartures(TickType_t now) {
+    bool fetch_due =
+        network_state_.phase == NetworkPhase::READY &&
+        (prev_api_fetch_ == 0 ||
+        (now - prev_api_fetch_) >= pdMS_TO_TICKS(kApiTiming_));
+
+    if (!fetch_due) {
+        return;
+    }
+
+    prev_api_fetch_ = now;
+
+    Departures latest_departures {};
+    bool fetch_ok = apiFetch() &&
+        jsonParser(api_buffer, &latest_departures);
+    bool has_cached_data =
+        network_state_.departure_state == DepartureState::READY;
+
+    if (fetch_ok) {
+        api_failures_ = 0;
+        last_successful_fetch_ = now;
+        setNetworkPhase(NetworkPhase::READY);
+        network_state_.departure_state = DepartureState::READY;
+        network_state_.stale_data = false;
+        network_state_.departures = latest_departures;
+        sendNetworkState();
+        return;
+    }
+
+    if (has_cached_data) {
+        if (!network_state_.stale_data) {
+            network_state_.stale_data = true;
+            sendNetworkState();
+        }
+        return;
+    }
+
+    if (api_failures_ < kMaxApiFailures_) {
+        api_failures_++;
+
+        if (api_failures_ >= kMaxApiFailures_) {
+            network_state_.departure_state = DepartureState::API_ERROR;
+            network_state_.stale_data = false;
+            sendNetworkState();
+        }
+    }
+}
+
 void NetworkManager::networkTask(void* pvParameters) {
     auto* self = static_cast<NetworkManager*>(pvParameters);
     TickType_t now = 0;
-    Departures latest_departures {};
     NetworkCommand command {};
 
     while(true) {
@@ -275,74 +366,9 @@ void NetworkManager::networkTask(void* pvParameters) {
             }
         }
         now = xTaskGetTickCount();
-
-        if (self->mode_ == NetworkMode::NORMAL &&
-            self->network_state_.phase == NetworkPhase::CONNECTING &&
-            self->prev_reconnect_attempt_ != 0 &&
-            (now - self->prev_reconnect_attempt_) >= pdMS_TO_TICKS(self->kReconnectTiming_)) {
-            if (self->reconnection_attempts_ >= self->kMaxRetries_) {
-                ESP_LOGW(TAG, "Too many Wi-Fi reconnect failures, switching to setup mode");
-                self->startSetupMode();
-            }
-            else {
-                self->reconnection_attempts_++;
-                self->prev_reconnect_attempt_ = now;
-                self->sendNetworkState();
-                if (!self->handleWifiError(self->wifi_interface_.setStaMode(), "set STA mode")) {
-                    continue;
-                }
-                self->handleWifiError(self->wifi_interface_.connect(), "connect STA");
-            }
-        }
-
-        if (self->network_state_.phase == NetworkPhase::READY &&
-            self->network_state_.departure_state == DepartureState::READY &&
-            !self->network_state_.stale_data &&
-            self->last_successful_fetch_ != 0 &&
-            (now - self->last_successful_fetch_) >= pdMS_TO_TICKS(self->kStaleDataTiming_)) {
-            self->network_state_.stale_data = true;
-            self->sendNetworkState();
-        }
-
-        if (self->network_state_.phase == NetworkPhase::READY &&
-            (self->prev_api_fetch_ == 0 ||
-            (now - self->prev_api_fetch_) >= pdMS_TO_TICKS(self->kApiTiming_))) {
-            self->prev_api_fetch_ = now;
-
-            bool fetch_ok = self->apiFetch() &&
-                self->jsonParser(self->api_buffer, &latest_departures);
-            bool has_cached_data =
-                self->network_state_.departure_state == DepartureState::READY;
-
-            if (fetch_ok) {
-                self->api_failures_ = 0;
-                self->last_successful_fetch_ = now;
-                self->setNetworkPhase(NetworkPhase::READY);
-                self->network_state_.departure_state = DepartureState::READY;
-                self->network_state_.stale_data = false;
-                self->network_state_.departures = latest_departures;
-                self->sendNetworkState();
-                continue;
-            }
-
-            if (has_cached_data) {
-                if (!self->network_state_.stale_data) {
-                    self->network_state_.stale_data = true;
-                    self->sendNetworkState();
-                }
-                continue;
-            }
-
-            if (self->api_failures_ < self->kMaxApiFailures_) {
-                self->api_failures_++;
-
-                if (self->api_failures_ >= self->kMaxApiFailures_) {
-                    self->network_state_.departure_state = DepartureState::API_ERROR;
-                    self->network_state_.stale_data = false;
-                    self->sendNetworkState();
-                }
-            }
-        }
+        self->processReconnect(now);
+        self->updateStaleData(now);
+        self->fetchDepartures(now);
     }
 }
 

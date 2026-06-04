@@ -49,6 +49,9 @@ class NetworkManager {
     bool buildApiUrl();
     void startSetupMode();
     void startNormalMode(const DeviceSettings& settings);
+    void processReconnect(TickType_t now);
+    void updateStaleData(TickType_t now);
+    void fetchDepartures(TickType_t now);
 public:
     NetworkManager(Queues* queues);
     void init();
