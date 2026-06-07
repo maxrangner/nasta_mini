@@ -220,10 +220,6 @@ void SystemManager::handleSystemEvent(const SystemEvent& system_event) {
 }
 
 void SystemManager::setState(SystemState new_state) {
-    if (system_state_ == new_state) {
-        return;
-    }
-
     system_state_ = new_state;
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
 }
