@@ -4,11 +4,7 @@ project(sl_go_mini_tests LANGUAGES C CXX)
 
 enable_testing()
 
-if(NOT DEFINED ENV{IDF_PATH})
-    message(FATAL_ERROR "IDF_PATH must be set so Unity can be found.")
-endif()
-
-set(UNITY_DIR "$ENV{IDF_PATH}/components/unity/unity")
+set(UNITY_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/unity")
 set(UNITY_SRC "${UNITY_DIR}/src/unity.c")
 
 if(NOT EXISTS "${UNITY_SRC}")
