@@ -60,16 +60,6 @@ struct Departures {
     DirectionDepartures directions[kMaxDepartureDirections];
 };
 
-inline uint8_t totalDepartureCount(const Departures& departures) {
-    uint8_t count = 0;
-
-    for (uint8_t i = 0; i < kMaxDepartureDirections; i++) {
-        count += departures.directions[i].count;
-    }
-
-    return count;
-}
-
 struct NetworkState {
     NetworkPhase phase = NetworkPhase::CONNECTING;
     DepartureState departure_state = DepartureState::NONE;

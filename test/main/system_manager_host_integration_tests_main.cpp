@@ -1,0 +1,22 @@
+#include "unity.h"
+
+void test_system_manager_init_queues_start_normal_mode_when_loaded_settings_are_valid(void);
+void test_system_manager_enters_connecting_state_when_network_reports_connecting(void);
+void test_system_manager_enters_connected_state_when_network_is_ready_with_no_departures(void);
+void test_system_manager_enters_api_error_state_when_network_reports_api_error(void);
+void test_system_manager_enters_no_departures_state_when_network_is_ready_with_empty_departures(void);
+void test_system_manager_enters_departures_state_when_network_has_departures(void);
+
+int main(void)
+{
+    UNITY_BEGIN();
+
+    RUN_TEST(test_system_manager_init_queues_start_normal_mode_when_loaded_settings_are_valid);
+    RUN_TEST(test_system_manager_enters_connecting_state_when_network_reports_connecting);
+    RUN_TEST(test_system_manager_enters_connected_state_when_network_is_ready_with_no_departures);
+    RUN_TEST(test_system_manager_enters_api_error_state_when_network_reports_api_error);
+    RUN_TEST(test_system_manager_enters_no_departures_state_when_network_is_ready_with_empty_departures);
+    RUN_TEST(test_system_manager_enters_departures_state_when_network_has_departures);
+
+    return UNITY_END();
+}

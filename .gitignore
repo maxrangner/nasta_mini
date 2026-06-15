@@ -18,6 +18,7 @@
 
 # Build artifacts and directories
 **/build/
+**/build-*/
 build/
 *.o
 *.a
@@ -79,3 +80,5 @@ Desktop.ini
 credentials.*
 AGENTS.md
 LLM_REDESIGN_FLOW.md
+internal-readme.md
+TESTING.md

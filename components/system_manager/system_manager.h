@@ -29,7 +29,7 @@ class SystemManager {
 public:
     SystemManager(Queues* queues);
     void init();
-
+    SystemState getState() const;
 private:
     static void systemTask(void* pvParameters);
     static void handleButtonCallback(button_event_t event, uint8_t gpio_num, void* user_data);

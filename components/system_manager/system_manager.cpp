@@ -5,6 +5,16 @@
 static const char *TAG = "system manager";
 static constexpr uint32_t kControlQueueSendTimeoutMs = 10;
 
+static uint8_t totalDepartureCount(const Departures& departures) {
+    uint8_t count = 0;
+
+    for (uint8_t i = 0; i < kMaxDepartureDirections; i++) {
+        count += departures.directions[i].count;
+    }
+
+    return count;
+}
+
 SystemManager::SystemManager(Queues* queues)
     : system_in_queue_(queues->system_in_queue),
       network_in_queue_(queues->network_in_queue) {
@@ -64,13 +74,13 @@ void SystemManager::init() {
         command.settings = settings_;
     }
 
-    if (xQueueSend(
-        network_in_queue_,
-        &command,
-        pdMS_TO_TICKS(kControlQueueSendTimeoutMs)
-    ) != pdTRUE) {
+    if (xQueueSend(network_in_queue_, &command, pdMS_TO_TICKS(kControlQueueSendTimeoutMs)) != pdTRUE) {
         ESP_LOGW(TAG, "Failed to queue network command: %d", static_cast<int>(command.type));
     }
+}
+
+SystemState SystemManager::getState() const {
+    return system_state_;
 }
 
 void SystemManager::handleButtonCallback(button_event_t event, uint8_t gpio_num, void* user_data) {
@@ -220,10 +230,6 @@ void SystemManager::handleSystemEvent(const SystemEvent& system_event) {
 }
 
 void SystemManager::setState(SystemState new_state) {
-    if (system_state_ == new_state) {
-        return;
-    }
-
     system_state_ = new_state;
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
 }
