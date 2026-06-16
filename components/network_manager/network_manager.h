@@ -23,6 +23,7 @@ class NetworkManager {
     uint8_t api_failures_ = 0;
     
     static constexpr uint32_t kUpdateInterval_ = 1000;
+    static constexpr uint32_t kSetupPortalPollInterval_ = 100;
     static constexpr uint32_t kApiTiming_ = 10000;
     static constexpr uint32_t kReconnectTiming_ = 10000;
     static constexpr uint32_t kStaleDataTiming_ = 30000;

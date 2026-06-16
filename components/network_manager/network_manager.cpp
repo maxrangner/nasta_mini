@@ -352,7 +352,11 @@ void NetworkManager::networkTask(void* pvParameters) {
     NetworkCommand command {};
 
     while(true) {
-        if (xQueueReceive(self->network_in_queue_, &command, pdMS_TO_TICKS(self->kUpdateInterval_))) {
+        TickType_t wait_ticks = pdMS_TO_TICKS(
+            self->setup_server_ != nullptr ? self->kSetupPortalPollInterval_ : self->kUpdateInterval_
+        );
+
+        if (xQueueReceive(self->network_in_queue_, &command, wait_ticks)) {
             switch (command.type) {
                 case NetworkCommandType::WIFI_LINK_EVENT:
                     ESP_LOGI(TAG, "Command - WIFI_LINK_EVENT: %d", static_cast<int>(command.wifi_link_event));
@@ -370,6 +374,8 @@ void NetworkManager::networkTask(void* pvParameters) {
                     break;
             }
         }
+
+        pollSetupPortal();
         now = xTaskGetTickCount();
         self->processReconnect(now);
         self->updateStaleData(now);
