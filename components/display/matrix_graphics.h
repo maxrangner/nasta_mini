@@ -420,6 +420,28 @@ inline constexpr uint8_t kBlank[64] = {
     0,0,0,0,0,0,0,0
 };
 
+inline constexpr uint8_t kArrowLeft[64] = {
+    0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,0,0,
+    0,0,1,1,0,0,0,0,
+    0,1,1,1,1,1,0,0,
+    0,0,1,1,0,0,0,0,
+    0,0,0,1,0,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+};
+
+inline constexpr uint8_t kArrowRight[64] = {
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,1,0,0,0,
+    0,0,0,0,1,1,0,0,
+    0,0,1,1,1,1,1,0,
+    0,0,0,0,1,1,0,0,
+    0,0,0,0,1,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+};
+
 inline constexpr const uint8_t* kNumbers[] = {
     kNum0, kNum1, kNum2, kNum3, kNum4, kNum5, kNum6, kNum7, kNum8, kNum9,
     kNum10, kNum11, kNum12, kNum13, kNum14, kNum15, kNum16, kNum17, kNum18, kNum19,
@@ -433,5 +455,7 @@ inline constexpr const uint8_t* kIcons[] = {
     kOk,
     kQuestion,
     kThirtyPlus,
-    kBlank
+    kBlank,
+    kArrowLeft,
+    kArrowRight
 };

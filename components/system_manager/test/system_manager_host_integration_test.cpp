@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "display.h"
 #include "system_manager.h"
 
 struct HostQueue {
@@ -14,6 +15,7 @@ struct HostQueue {
 static DeviceSettings loaded_settings_stub {};
 static Queues test_queues {};
 static SystemManager* system_manager = nullptr;
+static TickType_t fake_tick_count = 0;
 
 struct SystemManagerTestAccess {
     static void sendNetworkState(SystemManager& system_manager, const NetworkState& network_state) {
@@ -141,6 +143,19 @@ BaseType_t xTaskCreatePinnedToCore(
     return pdPASS;
 }
 
+TickType_t xTaskGetTickCount(void) {
+    return fake_tick_count;
+}
+
+void vTaskDelayUntil(TickType_t* previous_wake_time, TickType_t time_increment) {
+    if (previous_wake_time == nullptr) {
+        return;
+    }
+
+    *previous_wake_time += time_increment;
+    fake_tick_count = *previous_wake_time;
+}
+
 extern "C" void button_service_init() {
 }
 
@@ -173,30 +188,14 @@ bool saveDeviceSettings(const DeviceSettings& settings) {
     return true;
 }
 
-void LedMatrix::init() {
+void displayInit() {
 }
 
-void LedMatrix::setColor(uint8_t red, uint8_t green, uint8_t blue) {
-    (void)red;
-    (void)green;
-    (void)blue;
+void displaySetData(const DisplayData& display_data) {
+    (void)display_data;
 }
 
-void LedMatrix::displayIcon(MatrixIcon icon) {
-    (void)icon;
-}
-
-void LedMatrix::displayDeparture(const char* display_text, uint32_t animation_frame) {
-    (void)display_text;
-    (void)animation_frame;
-}
-
-void LedMatrix::bootAnimation(uint32_t frame) {
-    (void)frame;
-}
-
-void LedMatrix::connectionAnimation(uint32_t frame) {
-    (void)frame;
+void displayUpdate() {
 }
 
 void test_system_manager_init_queues_start_normal_mode_when_loaded_settings_are_valid(void)

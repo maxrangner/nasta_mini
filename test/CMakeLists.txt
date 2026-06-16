@@ -58,6 +58,7 @@ add_host_test(sl_go_mini_system_manager_host_integration_tests
     INCLUDE_DIRS
         support
         ../components/common
+        ../components/display
         ../components/system_manager
         ../components/button_driver
 )

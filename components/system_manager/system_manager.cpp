@@ -1,6 +1,7 @@
 #include "system_manager.h"
 #include "esp_log.h"
 #include "settings_storage.h"
+#include <string.h>
 
 static const char *TAG = "system manager";
 static constexpr uint32_t kControlQueueSendTimeoutMs = 10;
@@ -38,11 +39,11 @@ void SystemManager::init() {
         .user_data = this,
     };
     button_init(&button_cfg, &main_button_);
-    matrix_.init();
 
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
     ESP_LOGI(TAG, "Boot mode -> %d", static_cast<int>(boot_mode));
-    renderDisplay();
+    updateDisplay();
+    displayUpdate();
 
     xTaskCreatePinnedToCore(       // UI Task
         systemTask,                // Function to implement the task
@@ -187,6 +188,7 @@ void SystemManager::handleSystemEvent(const SystemEvent& system_event) {
                         selected_direction_ = 1;
                     }
 
+                    direction_change_counter_++;
                     ESP_LOGI(TAG, "Direction -> %u", static_cast<unsigned>(selected_direction_));
                     break;
 
@@ -215,6 +217,8 @@ void SystemManager::handleSystemEvent(const SystemEvent& system_event) {
             handleSetupConfigEvent(system_event.setup_config);
             break;
     }
+
+    updateDisplay();
 }
 
 void SystemManager::setState(SystemState new_state) {
@@ -222,85 +226,84 @@ void SystemManager::setState(SystemState new_state) {
     ESP_LOGI(TAG, "State -> %d", static_cast<int>(system_state_));
 }
 
-void SystemManager::renderDisplay() {
-    DirectionDepartures active_departures {};
-
-    if (system_state_ == SystemState::DEPARTURES &&
-        selected_direction_ >= 1 &&
-        selected_direction_ <= kMaxDepartureDirections) {
-        active_departures = network_state_.departures.directions[selected_direction_ - 1];
-    }
+DisplayData SystemManager::makeDisplayData() const {
+    DisplayData display_data {};
+    display_data.active_direction = selected_direction_;
+    display_data.show_stale_data = network_state_.status == NetworkStatus::DEPARTURES_STALE;
+    display_data.direction_change_counter = direction_change_counter_;
 
     switch (system_state_) {
         case SystemState::BOOT:
-            matrix_.bootAnimation(animation_frame_);
+            display_data.screen = DisplayScreen::BOOT;
             break;
 
         case SystemState::CONNECTING:
-            matrix_.setColor(0, 0, kPixelBrightness_);
-            matrix_.connectionAnimation(animation_frame_);
+            display_data.screen = DisplayScreen::CONNECTING;
             break;
 
         case SystemState::CONNECTED:
-            matrix_.setColor(0, kPixelBrightness_, 0);
-            matrix_.displayIcon(MatrixIcon::OK);
+            display_data.screen = DisplayScreen::CONNECTED;
             break;
 
         case SystemState::SETUP:
-            matrix_.setColor(0, kPixelBrightness_, kPixelBrightness_);
-            matrix_.displayIcon(MatrixIcon::HEART);
+            display_data.screen = DisplayScreen::SETUP;
             break;
 
         case SystemState::DEPARTURES:
-            matrix_.setColor(
-                network_state_.status == NetworkStatus::DEPARTURES_STALE ? kPixelBrightness_ : 0,
-                kPixelBrightness_,
-                0
-            );
+            display_data.screen = DisplayScreen::DEPARTURES;
 
-            if (active_departures.count == 0) {
-                matrix_.displayIcon(MatrixIcon::QUESTION);
-                break;
+            if (selected_direction_ >= 1 &&
+                selected_direction_ <= kMaxDepartureDirections) {
+                const DirectionDepartures& active_departures =
+                    network_state_.departures.directions[selected_direction_ - 1];
+
+                if (active_departures.count > 0) {
+                    display_data.has_departure_for_active_direction = true;
+                    memcpy(
+                        display_data.departure_text,
+                        active_departures.departures[0].display,
+                        sizeof(display_data.departure_text)
+                    );
+                }
             }
-
-            matrix_.displayDeparture(
-                active_departures.departures[0].display,
-                animation_frame_
-            );
             break;
 
         case SystemState::NO_DEPARTURES:
-            matrix_.setColor(kPixelBrightness_, kPixelBrightness_, 0);
-            matrix_.displayIcon(MatrixIcon::QUESTION);
+            display_data.screen = DisplayScreen::NO_DEPARTURES;
             break;
 
         case SystemState::API_ERROR:
-            matrix_.setColor(kPixelBrightness_, 0, 0);
-            matrix_.displayIcon(MatrixIcon::QUESTION);
+            display_data.screen = DisplayScreen::API_ERROR;
             break;
 
         case SystemState::NETWORK_ERROR:
-            matrix_.setColor(kPixelBrightness_, 0, 0);
-            matrix_.displayIcon(MatrixIcon::CROSS);
+            display_data.screen = DisplayScreen::NETWORK_ERROR;
             break;
     }
+
+    return display_data;
+}
+
+void SystemManager::updateDisplay() {
+    displaySetData(makeDisplayData());
 }
 
 void SystemManager::systemTask(void* pvParameters) {
     auto* self = static_cast<SystemManager*>(pvParameters);
+    TickType_t next_update = xTaskGetTickCount();
 
     while(true) {
         SystemEvent system_event {};
 
-        if (xQueueReceive(
+        while (xQueueReceive(
             self->system_in_queue_,
             &system_event,
-            pdMS_TO_TICKS(self->kUpdateInterval_)
+            0
         ) == pdTRUE) {
             self->handleSystemEvent(system_event);
         }
 
-        self->animation_frame_++;
-        self->renderDisplay();
+        displayUpdate();
+        vTaskDelayUntil(&next_update, pdMS_TO_TICKS(self->kUpdateInterval_));
     }
 }

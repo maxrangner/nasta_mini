@@ -11,7 +11,9 @@ enum class MatrixIcon : uint8_t {
     OK = 3,
     QUESTION = 4,
     THIRTY_PLUS = 5,
-    BLANK = 6
+    BLANK = 6,
+    ARROW_LEFT = 7,
+    ARROW_RIGHT = 8
 };
 
 class LedMatrix {

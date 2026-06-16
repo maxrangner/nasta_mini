@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "system_manager.cpp" "led_matrix.cpp"
+    SRCS "system_manager.cpp"
     INCLUDE_DIRS "."
-    REQUIRES common wifi_interface button_driver led_strip
+    REQUIRES common wifi_interface button_driver display
 )

@@ -1,6 +1,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "app_context.h"
+#include "display.h"
 #include "system_manager.h"
 #include "network_manager.h"
 #include "message_types.h"
@@ -14,6 +15,8 @@ extern "C" void app_main(void)
         .system_in_queue = xQueueCreate(kSystemQueueLength, sizeof(SystemEvent)),
         .network_in_queue = xQueueCreate(kNetworkQueueLength, sizeof(NetworkCommand)),
     };
+
+    displayInit();
 
     SystemManager system_manager(&queues);
     NetworkManager network_manager(&queues);

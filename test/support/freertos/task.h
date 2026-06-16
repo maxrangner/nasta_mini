@@ -13,3 +13,6 @@ BaseType_t xTaskCreatePinnedToCore(
     TaskHandle_t* task_handle,
     BaseType_t core_id
 );
+
+TickType_t xTaskGetTickCount(void);
+void vTaskDelayUntil(TickType_t* previous_wake_time, TickType_t time_increment);
