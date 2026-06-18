@@ -71,6 +71,9 @@ void button_init(const button_cfg_t* cfg, button_t* button_handle)
         button_handle,
         button_timer_cb
     );
+    if (button_handle->timer == NULL) {
+        ESP_ERROR_CHECK(ESP_ERR_NO_MEM);
+    }
     button_handle->press_time = 0;
 
     gpio_isr_handler_add(cfg->gpio_num, button_isr, button_handle);
