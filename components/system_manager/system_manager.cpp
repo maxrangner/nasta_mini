@@ -86,10 +86,6 @@ void SystemManager::startRuntime() {
     setSystemState(is_setup_mode ? SystemState::SETUP : SystemState::CONNECTING);
     displayPlayAnimation(DisplayAnimation::BOOT);
 
-    if (!is_setup_mode) {
-        displayPlayAnimation(DisplayAnimation::CONNECTING);
-    }
-
     if (requestMode(
         is_setup_mode ? NetworkCommandType::START_SETUP_MODE
                       : NetworkCommandType::START_NORMAL_MODE
@@ -102,18 +98,7 @@ void SystemManager::startRuntime() {
 }
 
 void SystemManager::handleNetworkState(const NetworkState& network_state) {
-    NetworkStatus previous_status = network_state_.status;
     network_state_ = network_state;
-
-    if (network_state_.status != previous_status) {
-        if (network_state_.status == NetworkStatus::CONNECTING) {
-            displayPlayAnimation(DisplayAnimation::CONNECTING);
-        }
-        else if (previous_status == NetworkStatus::CONNECTING) {
-            displayPlayAnimation(DisplayAnimation::NONE);
-        }
-    }
-
     setSystemState(stateForNetworkStatus(network_state_.status));
 }
 
@@ -156,7 +141,6 @@ void SystemManager::handleSetupConfig(const SetupConfig& setup_config) {
 
     network_state_.status = NetworkStatus::CONNECTING;
     setSystemState(SystemState::CONNECTING);
-    displayPlayAnimation(DisplayAnimation::CONNECTING);
 
     if (!requestMode(NetworkCommandType::START_NORMAL_MODE)) {
         setSystemState(SystemState::NETWORK_ERROR);
@@ -230,7 +214,6 @@ void SystemManager::setSystemState(SystemState new_state) {
 DisplayState SystemManager::buildDisplayState() const {
     DisplayState display_state {};
     display_state.system_state = system_state_;
-    display_state.active_direction = selected_direction_;
 
     if (selected_direction_ < 1 ||
         selected_direction_ > kMaxDepartureDirections) {
@@ -244,7 +227,6 @@ DisplayState SystemManager::buildDisplayState() const {
         return display_state;
     }
 
-    display_state.has_departure_for_active_direction = true;
     memcpy(
         display_state.departure_text,
         active_departures.departures[0].display,

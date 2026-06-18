@@ -239,7 +239,7 @@ void test_system_manager_start_runtime_queues_start_normal_mode_when_loaded_sett
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.startup_direction, command.settings.startup_direction);
     TEST_ASSERT_EQUAL_CHAR(loaded_settings_stub.wifi.ssid[0], command.settings.wifi.ssid[0]);
     TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(DisplayAnimation::CONNECTING),
+        static_cast<int>(DisplayAnimation::BOOT),
         static_cast<int>(last_animation)
     );
 }
@@ -318,6 +318,5 @@ void test_system_manager_enters_departures_state_when_network_has_departures(voi
         static_cast<int>(SystemState::DEPARTURES),
         static_cast<int>(display_state.system_state)
     );
-    TEST_ASSERT_TRUE(display_state.has_departure_for_active_direction);
     TEST_ASSERT_EQUAL_STRING("5 min", display_state.departure_text);
 }

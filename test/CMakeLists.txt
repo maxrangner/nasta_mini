@@ -62,3 +62,14 @@ add_host_test(sl_go_mini_system_manager_host_integration_tests
         ../components/system_manager
         ../components/button_driver
 )
+
+add_host_test(sl_go_mini_display_unit_tests
+    SOURCES
+        main/display_unit_tests_main.cpp
+        ../components/display/display.cpp
+        ../components/display/test/display_unit_test.cpp
+    INCLUDE_DIRS
+        support
+        ../components/common
+        ../components/display
+)
