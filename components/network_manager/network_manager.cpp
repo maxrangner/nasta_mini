@@ -71,7 +71,7 @@ void NetworkManager::handleWifiEvent(WifiLinkEvent event) {
             prev_reconnect_attempt_ = 0;
             prev_api_fetch_ = 0;
             api_failures_ = 0;
-            if (!startSetupPortal(&setup_server_, system_in_queue_)) {
+            if (!startSetupPortal(&setup_server_, system_in_queue_, applied_settings_)) {
                 setNetworkStatus(NetworkStatus::SETUP_ERROR);
                 sendNetworkState();
             }
@@ -326,6 +326,7 @@ void NetworkManager::networkTask(void* pvParameters) {
 
                 case NetworkCommandType::START_SETUP_MODE:
                     ESP_LOGI(TAG, "Command - START_SETUP_MODE");
+                    self->applied_settings_ = command.settings;
                     self->startSetupMode();
                     break;
 

@@ -47,6 +47,17 @@ static DeviceSettings makeValidSettings() {
     return settings;
 }
 
+static DeviceSettings makeSetupModeSettings() {
+    DeviceSettings settings = makeValidSettings();
+    strcpy(settings.wifi.ssid, "Saved WiFi");
+    strcpy(settings.wifi.password, "SavedPass");
+    settings.site.site_id = 9192;
+    settings.site.transport_filter = TransportMode::TRAIN;
+    settings.startup_direction = 2;
+    settings.setup.needs_setup = true;
+    return settings;
+}
+
 static Queues makeQueues() {
     Queues queues {};
     queues.system_in_queue = xQueueCreate(kSystemQueueLength, sizeof(SystemEvent));
@@ -242,6 +253,31 @@ void test_system_manager_start_runtime_queues_start_normal_mode_when_loaded_sett
         static_cast<int>(DisplayAnimation::BOOT),
         static_cast<int>(last_animation)
     );
+}
+
+void test_system_manager_start_runtime_queues_start_setup_mode_with_loaded_settings(void)
+{
+    loaded_settings_stub = makeSetupModeSettings();
+    delete system_manager;
+    system_manager = new SystemManager(&test_queues);
+    system_manager->init();
+
+    SystemManagerHostTestAccess::startRuntime(*system_manager);
+
+    NetworkCommand command {};
+    TEST_ASSERT_EQUAL(pdTRUE, xQueueReceive(test_queues.network_in_queue, &command, 0));
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(NetworkCommandType::START_SETUP_MODE),
+        static_cast<int>(command.type)
+    );
+    TEST_ASSERT_EQUAL_UINT32(loaded_settings_stub.site.site_id, command.settings.site.site_id);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(loaded_settings_stub.site.transport_filter),
+        static_cast<int>(command.settings.site.transport_filter)
+    );
+    TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.startup_direction, command.settings.startup_direction);
+    TEST_ASSERT_EQUAL_STRING(loaded_settings_stub.wifi.ssid, command.settings.wifi.ssid);
+    TEST_ASSERT_EQUAL_STRING(loaded_settings_stub.wifi.password, command.settings.wifi.password);
 }
 
 void test_system_manager_enters_connecting_state_when_network_reports_connecting(void)

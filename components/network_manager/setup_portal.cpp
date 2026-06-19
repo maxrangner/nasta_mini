@@ -9,6 +9,7 @@
 #include "lwip/sockets.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -258,8 +259,267 @@ button:focus {
 }
 )css";
 
-static const char* kSetupPageBody = R"html(
+static const char* kSetupSavedPageBody = R"html(
 <div class="shell">
+  <div class="card">
+    <div class="hero">
+      <span class="badge">Saved</span>
+      <h1>Settings saved</h1>
+      <p>The device is switching to normal Wi-Fi mode now.</p>
+    </div>
+    <div class="content">
+      <p class="status success">You can close this page. The display should reconnect with the new settings shortly.</p>
+    </div>
+  </div>
+</div>
+)html";
+
+static const char* kSetupErrorPageBody = R"html(
+<div class="shell">
+  <div class="card">
+    <div class="hero">
+      <span class="badge">Setup error</span>
+      <h1>Submitted settings were invalid</h1>
+      <p>Please go back and try again.</p>
+    </div>
+    <div class="content">
+      <p class="status error">Check that Wi-Fi name, SL site id, and startup direction were filled in correctly.</p>
+      <p class="footer-note"><a class="link" href="/">Return to setup</a></p>
+    </div>
+  </div>
+</div>
+)html";
+
+static int s_dns_socket = -1;
+static uint8_t s_ap_ip_bytes[4] = {};
+static DeviceSettings s_setup_settings = {};
+
+static void urlDecode(char* destination, size_t destination_size, const char* source) {
+    if (destination == nullptr || destination_size == 0) {
+        return;
+    }
+
+    size_t write_index = 0;
+
+    for (size_t i = 0; source[i] != '\0' && write_index + 1 < destination_size; i++) {
+        if (source[i] == '+') {
+            destination[write_index++] = ' ';
+            continue;
+        }
+
+        if (source[i] == '%' &&
+            source[i + 1] != '\0' &&
+            source[i + 2] != '\0') {
+            char hex[3] = { source[i + 1], source[i + 2], '\0' };
+            destination[write_index++] = static_cast<char>(strtol(hex, nullptr, 16));
+            i += 2;
+            continue;
+        }
+
+        destination[write_index++] = source[i];
+    }
+
+    destination[write_index] = '\0';
+}
+
+static esp_err_t sendHtmlDocumentStart(httpd_req_t* req, const char* title) {
+    httpd_resp_set_type(req, "text/html");
+
+    esp_err_t err = httpd_resp_sendstr_chunk(
+        req,
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(req, title);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(req, "</title><style>");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(req, kSharedStyle);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(req, "</style></head>");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return httpd_resp_sendstr_chunk(req, "<body>");
+}
+
+static esp_err_t sendHtmlDocumentEnd(httpd_req_t* req) {
+    esp_err_t err = httpd_resp_sendstr_chunk(req, "</body></html>");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return httpd_resp_sendstr_chunk(req, nullptr);
+}
+
+static esp_err_t sendHtmlDocument(httpd_req_t* req, const char* title, const char* body_html) {
+    esp_err_t err = sendHtmlDocumentStart(req, title);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(req, body_html);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return sendHtmlDocumentEnd(req);
+}
+
+static esp_err_t sendRedirectResponse(httpd_req_t* req, const char* location) {
+    httpd_resp_set_status(req, "303 See Other");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(req, "Location", location);
+    httpd_resp_set_type(req, "text/plain");
+    return httpd_resp_send(req, "Redirect to the captive portal", HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t sendSetupErrorResponse(httpd_req_t* req) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    return sendHtmlDocument(req, "Setup error", kSetupErrorPageBody);
+}
+
+static esp_err_t sendEscapedHtmlAttribute(httpd_req_t* req, const char* value) {
+    if (value == nullptr) {
+        return ESP_OK;
+    }
+
+    char buffer[16] = {};
+    size_t buffer_length = 0;
+
+    auto flush_buffer = [&]() -> esp_err_t {
+        if (buffer_length == 0) {
+            return ESP_OK;
+        }
+
+        buffer[buffer_length] = '\0';
+        esp_err_t err = httpd_resp_sendstr_chunk(req, buffer);
+        buffer_length = 0;
+        return err;
+    };
+
+    for (size_t i = 0; value[i] != '\0'; i++) {
+        const char* escaped = nullptr;
+
+        switch (value[i]) {
+            case '&':
+                escaped = "&amp;";
+                break;
+
+            case '"':
+                escaped = "&quot;";
+                break;
+
+            case '\'':
+                escaped = "&#39;";
+                break;
+
+            case '<':
+                escaped = "&lt;";
+                break;
+
+            case '>':
+                escaped = "&gt;";
+                break;
+
+            default:
+                break;
+        }
+
+        if (escaped != nullptr) {
+            esp_err_t err = flush_buffer();
+            if (err != ESP_OK) {
+                return err;
+            }
+
+            err = httpd_resp_sendstr_chunk(req, escaped);
+            if (err != ESP_OK) {
+                return err;
+            }
+            continue;
+        }
+
+        buffer[buffer_length++] = value[i];
+        if (buffer_length + 1 >= sizeof(buffer)) {
+            esp_err_t err = flush_buffer();
+            if (err != ESP_OK) {
+                return err;
+            }
+        }
+    }
+
+    return flush_buffer();
+}
+
+static const char* portalTransportValue(TransportMode transport_mode) {
+    switch (transport_mode) {
+        case TransportMode::METRO:
+            return "METRO";
+
+        case TransportMode::TRAIN:
+            return "TRAIN";
+
+        case TransportMode::BUS:
+            return "BUS";
+
+        case TransportMode::TRAM:
+            return "TRAM";
+
+        case TransportMode::UNKNOWN:
+        case TransportMode::SHIP:
+        case TransportMode::FERRY:
+        case TransportMode::TAXI:
+        default:
+            return "";
+    }
+}
+
+static esp_err_t sendSelectedAttribute(httpd_req_t* req, bool selected) {
+    if (!selected) {
+        return ESP_OK;
+    }
+
+    return httpd_resp_sendstr_chunk(req, " selected");
+}
+
+static esp_err_t sendSetupPage(httpd_req_t* req) {
+    esp_err_t err = sendHtmlDocumentStart(req, "sl-go-mini setup");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    char site_id_value[16] = {};
+    if (s_setup_settings.site.site_id != 0) {
+        snprintf(
+            site_id_value,
+            sizeof(site_id_value),
+            "%lu",
+            static_cast<unsigned long>(s_setup_settings.site.site_id)
+        );
+    }
+
+    uint8_t startup_direction =
+        s_setup_settings.startup_direction == 2 ? 2 : 1;
+    const char* transport_value = portalTransportValue(s_setup_settings.site.transport_filter);
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(<div class="shell">
   <div class="card">
     <div class="hero">
       <span class="badge">Setup mode</span>
@@ -273,13 +533,39 @@ static const char* kSetupPageBody = R"html(
 
           <div class="field">
             <label for="ssid">Wi-Fi name</label>
-            <input id="ssid" name="ssid" maxlength="32" placeholder="Home Wi-Fi" autocomplete="username" required>
+            <input id="ssid" name="ssid" maxlength="32" placeholder="Home Wi-Fi" autocomplete="username" required value=")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendEscapedHtmlAttribute(req, s_setup_settings.wifi.ssid);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(">
           </div>
 
           <div class="field">
             <label for="password">Wi-Fi password</label>
             <div class="password-wrap">
-              <input id="password" name="password" type="password" maxlength="64" autocomplete="current-password" placeholder="Optional for open networks">
+              <input id="password" name="password" type="password" maxlength="64" autocomplete="current-password" placeholder="Optional for open networks" value=")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendEscapedHtmlAttribute(req, s_setup_settings.wifi.password);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(">
               <button class="toggle" type="button" id="toggle-password" aria-label="Show password">Show</button>
             </div>
           </div>
@@ -290,18 +576,96 @@ static const char* kSetupPageBody = R"html(
 
           <div class="field">
             <label for="site_id">SL site id</label>
-            <input id="site_id" name="site_id" type="number" min="1" inputmode="numeric" placeholder="Example: 9192" required>
+            <input id="site_id" name="site_id" type="number" min="1" inputmode="numeric" placeholder="Example: 9192" required value=")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendEscapedHtmlAttribute(req, site_id_value);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(">
             <span class="hint">Enter the stop or station id used by the SL API.</span>
           </div>
 
           <div class="field">
             <label for="transport">Transport filter</label>
             <select id="transport" name="transport">
-              <option value="">Any</option>
-              <option value="METRO">Metro</option>
-              <option value="TRAIN">Train</option>
-              <option value="BUS">Bus</option>
-              <option value="TRAM">Tram</option>
+              <option value="")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, transport_value[0] == '\0');
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Any</option>
+              <option value="METRO")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, strcmp(transport_value, "METRO") == 0);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Metro</option>
+              <option value="TRAIN")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, strcmp(transport_value, "TRAIN") == 0);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Train</option>
+              <option value="BUS")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, strcmp(transport_value, "BUS") == 0);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Bus</option>
+              <option value="TRAM")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, strcmp(transport_value, "TRAM") == 0);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Tram</option>
             </select>
           </div>
         </fieldset>
@@ -312,8 +676,34 @@ static const char* kSetupPageBody = R"html(
           <div class="field">
             <label for="direction">Startup direction</label>
             <select id="direction" name="direction">
-              <option value="1">Direction 1</option>
-              <option value="2">Direction 2</option>
+              <option value="1")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, startup_direction == 1);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Direction 1</option>
+              <option value="2")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, startup_direction == 2);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Direction 2</option>
             </select>
             <span class="hint">A short button press switches direction later.</span>
           </div>
@@ -348,132 +738,17 @@ static const char* kSetupPageBody = R"html(
     });
   }
 })();
-</script>
-)html";
-
-static const char* kSetupSavedPageBody = R"html(
-<div class="shell">
-  <div class="card">
-    <div class="hero">
-      <span class="badge">Saved</span>
-      <h1>Settings saved</h1>
-      <p>The device is switching to normal Wi-Fi mode now.</p>
-    </div>
-    <div class="content">
-      <p class="status success">You can close this page. The display should reconnect with the new settings shortly.</p>
-    </div>
-  </div>
-</div>
-)html";
-
-static const char* kSetupErrorPageBody = R"html(
-<div class="shell">
-  <div class="card">
-    <div class="hero">
-      <span class="badge">Setup error</span>
-      <h1>Submitted settings were invalid</h1>
-      <p>Please go back and try again.</p>
-    </div>
-    <div class="content">
-      <p class="status error">Check that Wi-Fi name, SL site id, and startup direction were filled in correctly.</p>
-      <p class="footer-note"><a class="link" href="/">Return to setup</a></p>
-    </div>
-  </div>
-</div>
-)html";
-
-static int s_dns_socket = -1;
-static uint8_t s_ap_ip_bytes[4] = {};
-
-static void urlDecode(char* destination, size_t destination_size, const char* source) {
-    if (destination == nullptr || destination_size == 0) {
-        return;
-    }
-
-    size_t write_index = 0;
-
-    for (size_t i = 0; source[i] != '\0' && write_index + 1 < destination_size; i++) {
-        if (source[i] == '+') {
-            destination[write_index++] = ' ';
-            continue;
-        }
-
-        if (source[i] == '%' &&
-            source[i + 1] != '\0' &&
-            source[i + 2] != '\0') {
-            char hex[3] = { source[i + 1], source[i + 2], '\0' };
-            destination[write_index++] = static_cast<char>(strtol(hex, nullptr, 16));
-            i += 2;
-            continue;
-        }
-
-        destination[write_index++] = source[i];
-    }
-
-    destination[write_index] = '\0';
-}
-
-static esp_err_t sendHtmlDocument(httpd_req_t* req, const char* title, const char* body_html) {
-    httpd_resp_set_type(req, "text/html");
-
-    esp_err_t err = httpd_resp_sendstr_chunk(
-        req,
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        "<title>"
+</script>)html"
     );
     if (err != ESP_OK) {
         return err;
     }
 
-    err = httpd_resp_sendstr_chunk(req, title);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = httpd_resp_sendstr_chunk(req, "</title><style>");
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = httpd_resp_sendstr_chunk(req, kSharedStyle);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = httpd_resp_sendstr_chunk(req, "</style></head><body>");
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = httpd_resp_sendstr_chunk(req, body_html);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = httpd_resp_sendstr_chunk(req, "</body></html>");
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    return httpd_resp_sendstr_chunk(req, nullptr);
-}
-
-static esp_err_t sendRedirectResponse(httpd_req_t* req, const char* location) {
-    httpd_resp_set_status(req, "303 See Other");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    httpd_resp_set_hdr(req, "Location", location);
-    httpd_resp_set_type(req, "text/plain");
-    return httpd_resp_send(req, "Redirect to the captive portal", HTTPD_RESP_USE_STRLEN);
-}
-
-static esp_err_t sendSetupErrorResponse(httpd_req_t* req) {
-    httpd_resp_set_status(req, "400 Bad Request");
-    return sendHtmlDocument(req, "Setup error", kSetupErrorPageBody);
+    return sendHtmlDocumentEnd(req);
 }
 
 static esp_err_t handleSetupGetRequest(httpd_req_t* req) {
-    return sendHtmlDocument(req, "sl-go-mini setup", kSetupPageBody);
+    return sendSetupPage(req);
 }
 
 static esp_err_t handleSetupRedirectError(httpd_req_t* req, httpd_err_code_t error) {
@@ -784,7 +1059,7 @@ static void pollDnsServer() {
     }
 }
 
-bool startSetupPortal(httpd_handle_t* server, QueueHandle_t system_in_queue) {
+bool startSetupPortal(httpd_handle_t* server, QueueHandle_t system_in_queue, const DeviceSettings& settings) {
     if (server == nullptr) {
         return false;
     }
@@ -792,6 +1067,8 @@ bool startSetupPortal(httpd_handle_t* server, QueueHandle_t system_in_queue) {
     if (*server != nullptr) {
         return true;
     }
+
+    s_setup_settings = settings;
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 4;

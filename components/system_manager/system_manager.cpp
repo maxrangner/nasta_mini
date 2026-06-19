@@ -186,7 +186,8 @@ bool SystemManager::requestMode(NetworkCommandType command_type) {
     NetworkCommand command {};
     command.type = command_type;
 
-    if (command_type == NetworkCommandType::START_NORMAL_MODE) {
+    if (command_type == NetworkCommandType::START_NORMAL_MODE ||
+        command_type == NetworkCommandType::START_SETUP_MODE) {
         command.settings = settings_;
     }
 
