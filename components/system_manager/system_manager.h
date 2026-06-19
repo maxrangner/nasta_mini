@@ -8,8 +8,6 @@
 #include "message_types.h"
 
 class SystemManager {
-    friend struct SystemManagerTestAccess;
-
     static constexpr uint32_t kMainButtonPin_ = 3;
     static constexpr bool kMainButtonHasPullup_ = true;
     static constexpr uint16_t kButtonDebounceMs_ = 50;
@@ -25,18 +23,22 @@ class SystemManager {
     NetworkState network_state_ {};
     SystemState system_state_ = SystemState::BOOT;
     uint8_t selected_direction_ = 1;
-    uint32_t direction_change_counter_ = 0;
+    friend struct SystemManagerHostTestAccess;
 public:
     SystemManager(Queues* queues);
     void init();
-    SystemState getState() const;
 private:
     static void systemTask(void* pvParameters);
     static void handleButtonCallback(button_event_t event, uint8_t gpio_num, void* user_data);
+    void startRuntime();
     void handleSystemEvent(const SystemEvent& system_event);
-    void handleNetworkStateEvent(const NetworkState& network_state);
-    void handleSetupConfigEvent(const SetupConfig& setup_config);
-    void setState(SystemState new_state);
-    DisplayData makeDisplayData() const;
-    void updateDisplay();
+    void handleNetworkState(const NetworkState& network_state);
+    void handleToggleDirection();
+    void handleForceSetup();
+    void handleSetupConfig(const SetupConfig& setup_config);
+    bool saveSetupConfig(const SetupConfig& setup_config);
+    bool requestMode(NetworkCommandType command_type);
+    void setSystemState(SystemState new_state);
+    DisplayState buildDisplayState() const;
+    static SystemState stateForNetworkStatus(NetworkStatus network_status);
 };

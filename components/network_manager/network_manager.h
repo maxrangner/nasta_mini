@@ -18,7 +18,6 @@ class NetworkManager {
     NetworkState network_state_ {};
     TickType_t prev_reconnect_attempt_ = 0;
     TickType_t prev_api_fetch_ = 0;
-    TickType_t last_successful_fetch_ = 0;
     uint8_t reconnection_attempts_ = 0;
     uint8_t api_failures_ = 0;
     
@@ -26,7 +25,6 @@ class NetworkManager {
     static constexpr uint32_t kSetupPortalPollInterval_ = 100;
     static constexpr uint32_t kApiTiming_ = 10000;
     static constexpr uint32_t kReconnectTiming_ = 10000;
-    static constexpr uint32_t kStaleDataTiming_ = 30000;
     static constexpr uint8_t kMaxRetries_ = 5;
     static constexpr uint8_t kMaxApiFailures_ = 6;
     static constexpr size_t kMaxApiBufferSize_ = 102400;
@@ -45,7 +43,6 @@ class NetworkManager {
     void startSetupMode();
     void startNormalMode(const DeviceSettings& settings);
     void processReconnect(TickType_t now);
-    void updateStaleData(TickType_t now);
     void fetchDepartures(TickType_t now);
 public:
     NetworkManager(Queues* queues);

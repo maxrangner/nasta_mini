@@ -26,8 +26,7 @@ enum class NetworkStatus : uint8_t {
     SETUP_ERROR,
     CONNECTED,
     NO_DEPARTURES,
-    DEPARTURES_FRESH,
-    DEPARTURES_STALE,
+    DEPARTURES,
     API_ERROR,
     NETWORK_ERROR
 };
@@ -64,20 +63,15 @@ struct NetworkState {
     Departures departures {};
 };
 
-enum class SystemInputEvent : uint8_t {
-    TOGGLE_DIRECTION,
-    FORCE_SETUP
-};
-
 enum class SystemEventType {
     NETWORK_STATE,
-    INPUT_EVENT,
+    TOGGLE_DIRECTION,
+    FORCE_SETUP,
     SETUP_CONFIG
 };
 
 struct SystemEvent {
     SystemEventType type = SystemEventType::NETWORK_STATE;
     NetworkState network_state {};
-    SystemInputEvent input_event = SystemInputEvent::TOGGLE_DIRECTION;
     SetupConfig setup_config {};
 };

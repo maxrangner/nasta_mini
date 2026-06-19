@@ -448,14 +448,3 @@ inline constexpr const uint8_t* kNumbers[] = {
     kNum20, kNum21, kNum22, kNum23, kNum24, kNum25, kNum26, kNum27, kNum28, kNum29, kNum30
 };
 
-inline constexpr const uint8_t* kIcons[] = {
-    kHeart,
-    kColon,
-    kCross,
-    kOk,
-    kQuestion,
-    kThirtyPlus,
-    kBlank,
-    kArrowLeft,
-    kArrowRight
-};

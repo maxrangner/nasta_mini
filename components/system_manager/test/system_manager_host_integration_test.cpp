@@ -5,24 +5,36 @@
 #include "display.h"
 #include "system_manager.h"
 
+static constexpr UBaseType_t kHostQueueCapacity = 10;
+static constexpr size_t kHostQueueItemSize =
+    sizeof(SystemEvent) > sizeof(NetworkCommand)
+        ? sizeof(SystemEvent)
+        : sizeof(NetworkCommand);
+
 struct HostQueue {
     UBaseType_t item_size = 0;
     UBaseType_t queue_length = 0;
     UBaseType_t count = 0;
-    uint8_t items[10][sizeof(SystemEvent)] {};
+    uint8_t items[kHostQueueCapacity][kHostQueueItemSize] {};
 };
 
 static DeviceSettings loaded_settings_stub {};
 static Queues test_queues {};
 static SystemManager* system_manager = nullptr;
-static TickType_t fake_tick_count = 0;
+static DisplayState last_display_state {};
+static DisplayAnimation last_animation = DisplayAnimation::NONE;
 
-struct SystemManagerTestAccess {
-    static void sendNetworkState(SystemManager& system_manager, const NetworkState& network_state) {
-        SystemEvent event {};
-        event.type = SystemEventType::NETWORK_STATE;
-        event.network_state = network_state;
-        system_manager.handleSystemEvent(event);
+struct SystemManagerHostTestAccess {
+    static void startRuntime(SystemManager& system_manager) {
+        system_manager.startRuntime();
+    }
+
+    static void handleEvent(SystemManager& system_manager, const SystemEvent& system_event) {
+        system_manager.handleSystemEvent(system_event);
+    }
+
+    static DisplayState buildDisplayState(const SystemManager& system_manager) {
+        return system_manager.buildDisplayState();
     }
 };
 
@@ -40,6 +52,17 @@ static Queues makeQueues() {
     queues.system_in_queue = xQueueCreate(kSystemQueueLength, sizeof(SystemEvent));
     queues.network_in_queue = xQueueCreate(kNetworkQueueLength, sizeof(NetworkCommand));
     return queues;
+}
+
+static void sendNetworkState(const NetworkState& network_state) {
+    SystemEvent system_event {};
+    system_event.type = SystemEventType::NETWORK_STATE;
+    system_event.network_state = network_state;
+    SystemManagerHostTestAccess::handleEvent(*system_manager, system_event);
+}
+
+static DisplayState currentDisplayState() {
+    return SystemManagerHostTestAccess::buildDisplayState(*system_manager);
 }
 
 static void deleteQueues(Queues* queues) {
@@ -62,7 +85,10 @@ void setUp(void)
 {
     loaded_settings_stub = makeValidSettings();
     test_queues = makeQueues();
+    last_display_state = DisplayState {};
+    last_animation = DisplayAnimation::NONE;
     system_manager = new SystemManager(&test_queues);
+    system_manager->init();
 }
 
 void tearDown(void)
@@ -144,16 +170,12 @@ BaseType_t xTaskCreatePinnedToCore(
 }
 
 TickType_t xTaskGetTickCount(void) {
-    return fake_tick_count;
+    return 0;
 }
 
 void vTaskDelayUntil(TickType_t* previous_wake_time, TickType_t time_increment) {
-    if (previous_wake_time == nullptr) {
-        return;
-    }
-
-    *previous_wake_time += time_increment;
-    fake_tick_count = *previous_wake_time;
+    (void)previous_wake_time;
+    (void)time_increment;
 }
 
 extern "C" void button_service_init() {
@@ -188,23 +210,24 @@ bool saveDeviceSettings(const DeviceSettings& settings) {
     return true;
 }
 
-void displayInit() {
+void displaySetState(const DisplayState& display_state) {
+    last_display_state = display_state;
 }
 
-void displaySetData(const DisplayData& display_data) {
-    (void)display_data;
+void displayPlayAnimation(DisplayAnimation animation) {
+    last_animation = animation;
 }
 
 void displayUpdate() {
 }
 
-void test_system_manager_init_queues_start_normal_mode_when_loaded_settings_are_valid(void)
+void test_system_manager_start_runtime_queues_start_normal_mode_when_loaded_settings_are_valid(void)
 {
     TEST_ASSERT_NOT_NULL(test_queues.system_in_queue);
     TEST_ASSERT_NOT_NULL(test_queues.network_in_queue);
     TEST_ASSERT_NOT_NULL(system_manager);
 
-    system_manager->init();
+    SystemManagerHostTestAccess::startRuntime(*system_manager);
 
     NetworkCommand command {};
     TEST_ASSERT_EQUAL(pdTRUE, xQueueReceive(test_queues.network_in_queue, &command, 0));
@@ -215,6 +238,10 @@ void test_system_manager_init_queues_start_normal_mode_when_loaded_settings_are_
     TEST_ASSERT_EQUAL_UINT32(loaded_settings_stub.site.site_id, command.settings.site.site_id);
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.startup_direction, command.settings.startup_direction);
     TEST_ASSERT_EQUAL_CHAR(loaded_settings_stub.wifi.ssid[0], command.settings.wifi.ssid[0]);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(DisplayAnimation::BOOT),
+        static_cast<int>(last_animation)
+    );
 }
 
 void test_system_manager_enters_connecting_state_when_network_reports_connecting(void)
@@ -222,11 +249,12 @@ void test_system_manager_enters_connecting_state_when_network_reports_connecting
     NetworkState network_state {};
     network_state.status = NetworkStatus::CONNECTING;
 
-    SystemManagerTestAccess::sendNetworkState(*system_manager, network_state);
+    sendNetworkState(network_state);
 
+    DisplayState display_state = currentDisplayState();
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(SystemState::CONNECTING),
-        static_cast<int>(system_manager->getState())
+        static_cast<int>(display_state.system_state)
     );
 }
 
@@ -235,11 +263,12 @@ void test_system_manager_enters_connected_state_when_network_is_ready_with_no_de
     NetworkState network_state {};
     network_state.status = NetworkStatus::CONNECTED;
 
-    SystemManagerTestAccess::sendNetworkState(*system_manager, network_state);
+    sendNetworkState(network_state);
 
+    DisplayState display_state = currentDisplayState();
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(SystemState::CONNECTED),
-        static_cast<int>(system_manager->getState())
+        static_cast<int>(display_state.system_state)
     );
 }
 
@@ -248,11 +277,12 @@ void test_system_manager_enters_api_error_state_when_network_reports_api_error(v
     NetworkState network_state {};
     network_state.status = NetworkStatus::API_ERROR;
 
-    SystemManagerTestAccess::sendNetworkState(*system_manager, network_state);
+    sendNetworkState(network_state);
 
+    DisplayState display_state = currentDisplayState();
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(SystemState::API_ERROR),
-        static_cast<int>(system_manager->getState())
+        static_cast<int>(display_state.system_state)
     );
 }
 
@@ -261,18 +291,19 @@ void test_system_manager_enters_no_departures_state_when_network_is_ready_with_e
     NetworkState network_state {};
     network_state.status = NetworkStatus::NO_DEPARTURES;
 
-    SystemManagerTestAccess::sendNetworkState(*system_manager, network_state);
+    sendNetworkState(network_state);
 
+    DisplayState display_state = currentDisplayState();
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(SystemState::NO_DEPARTURES),
-        static_cast<int>(system_manager->getState())
+        static_cast<int>(display_state.system_state)
     );
 }
 
 void test_system_manager_enters_departures_state_when_network_has_departures(void)
 {
     NetworkState network_state {};
-    network_state.status = NetworkStatus::DEPARTURES_FRESH;
+    network_state.status = NetworkStatus::DEPARTURES;
     network_state.departures.directions[0].count = 1;
     memcpy(
         network_state.departures.directions[0].departures[0].display,
@@ -280,10 +311,12 @@ void test_system_manager_enters_departures_state_when_network_has_departures(voi
         sizeof("5 min")
     );
 
-    SystemManagerTestAccess::sendNetworkState(*system_manager, network_state);
+    sendNetworkState(network_state);
 
+    DisplayState display_state = currentDisplayState();
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(SystemState::DEPARTURES),
-        static_cast<int>(system_manager->getState())
+        static_cast<int>(display_state.system_state)
     );
+    TEST_ASSERT_EQUAL_STRING("5 min", display_state.departure_text);
 }

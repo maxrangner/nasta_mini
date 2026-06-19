@@ -3,26 +3,19 @@
 #include <stdint.h>
 #include "message_types.h"
 
-enum class DisplayScreen : uint8_t {
+enum class DisplayAnimation : uint8_t {
+    NONE,
     BOOT,
-    CONNECTING,
-    CONNECTED,
-    SETUP,
-    DEPARTURES,
-    NO_DEPARTURES,
-    API_ERROR,
-    NETWORK_ERROR
+    DIRECTION_LEFT,
+    DIRECTION_RIGHT
 };
 
-struct DisplayData {
-    DisplayScreen screen = DisplayScreen::BOOT;
-    uint8_t active_direction = 1;
-    bool has_departure_for_active_direction = false;
-    bool show_stale_data = false;
-    uint32_t direction_change_counter = 0;
+struct DisplayState {
+    SystemState system_state = SystemState::BOOT;
     char departure_text[sizeof(Departure {}.display)] = {};
 };
 
 void displayInit();
-void displaySetData(const DisplayData& display_data);
+void displaySetState(const DisplayState& state);
+void displayPlayAnimation(DisplayAnimation animation);
 void displayUpdate();

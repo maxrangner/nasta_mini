@@ -57,17 +57,7 @@ void NetworkManager::handleWifiEvent(WifiLinkEvent event) {
             prev_reconnect_attempt_ = 0;
             prev_api_fetch_ = 0;
             api_failures_ = 0;
-
-            if (last_successful_fetch_ == 0) {
-                setNetworkStatus(NetworkStatus::CONNECTED);
-            }
-            else if (hasAnyDepartures(network_state_.departures)) {
-                setNetworkStatus(NetworkStatus::DEPARTURES_STALE);
-            }
-            else {
-                setNetworkStatus(NetworkStatus::NO_DEPARTURES);
-            }
-
+            setNetworkStatus(NetworkStatus::CONNECTED);
             sendNetworkState();
             break;
 
@@ -150,7 +140,6 @@ void NetworkManager::startNormalMode(const DeviceSettings& settings) {
     reconnection_attempts_ = 0;
     prev_reconnect_attempt_ = 0;
     prev_api_fetch_ = 0;
-    last_successful_fetch_ = 0;
     api_failures_ = 0;
 
     stopSetupPortal(&setup_server_);
@@ -211,7 +200,6 @@ void NetworkManager::startSetupMode() {
     reconnection_attempts_ = 0;
     prev_reconnect_attempt_ = 0;
     prev_api_fetch_ = 0;
-    last_successful_fetch_ = 0;
     api_failures_ = 0;
     stopSetupPortal(&setup_server_);
 
@@ -278,26 +266,11 @@ void NetworkManager::processReconnect(TickType_t now) {
     handleWifiError(wifi_interface_.connect(), "connect STA", NetworkStatus::NETWORK_ERROR);
 }
 
-void NetworkManager::updateStaleData(TickType_t now) {
-    bool stale_timeout_reached =
-        network_state_.status == NetworkStatus::DEPARTURES_FRESH &&
-        last_successful_fetch_ != 0 &&
-        (now - last_successful_fetch_) >= pdMS_TO_TICKS(kStaleDataTiming_);
-
-    if (!stale_timeout_reached) {
-        return;
-    }
-
-    setNetworkStatus(NetworkStatus::DEPARTURES_STALE);
-    sendNetworkState();
-}
-
 void NetworkManager::fetchDepartures(TickType_t now) {
     bool fetch_due =
         (network_state_.status == NetworkStatus::CONNECTED ||
          network_state_.status == NetworkStatus::NO_DEPARTURES ||
-         network_state_.status == NetworkStatus::DEPARTURES_FRESH ||
-         network_state_.status == NetworkStatus::DEPARTURES_STALE ||
+         network_state_.status == NetworkStatus::DEPARTURES ||
          network_state_.status == NetworkStatus::API_ERROR) &&
         (prev_api_fetch_ == 0 ||
         (now - prev_api_fetch_) >= pdMS_TO_TICKS(kApiTiming_));
@@ -309,30 +282,18 @@ void NetworkManager::fetchDepartures(TickType_t now) {
     prev_api_fetch_ = now;
 
     Departures latest_departures {};
-    bool fetch_ok = apiFetch() &&
-        jsonParser(api_buffer, &latest_departures);
-    bool has_cached_result = last_successful_fetch_ != 0;
+    bool fetch_ok = apiFetch() && jsonParser(api_buffer, &latest_departures);
 
     if (fetch_ok) {
         api_failures_ = 0;
-        last_successful_fetch_ = now;
         network_state_.departures = latest_departures;
         if (hasAnyDepartures(latest_departures)) {
-            setNetworkStatus(NetworkStatus::DEPARTURES_FRESH);
+            setNetworkStatus(NetworkStatus::DEPARTURES);
         }
         else {
             setNetworkStatus(NetworkStatus::NO_DEPARTURES);
         }
         sendNetworkState();
-        return;
-    }
-
-    if (has_cached_result) {
-        if (hasAnyDepartures(network_state_.departures) &&
-            network_state_.status != NetworkStatus::DEPARTURES_STALE) {
-            setNetworkStatus(NetworkStatus::DEPARTURES_STALE);
-            sendNetworkState();
-        }
         return;
     }
 
@@ -378,7 +339,6 @@ void NetworkManager::networkTask(void* pvParameters) {
         pollSetupPortal();
         now = xTaskGetTickCount();
         self->processReconnect(now);
-        self->updateStaleData(now);
         self->fetchDepartures(now);
     }
 }
@@ -513,6 +473,10 @@ bool NetworkManager::jsonParser(const char* buffer, Departures* departures_out) 
         ESP_LOGW(TAG, "No API buffer to parse");
         return false;
     }
+    if (departures_out == nullptr) {
+        ESP_LOGW(TAG, "No departures output provided");
+        return false;
+    }
 
     ESP_LOGI(TAG, "Parsing json");
 
@@ -586,11 +550,6 @@ bool NetworkManager::jsonParser(const char* buffer, Departures* departures_out) 
             }
         }
     }
-    if (departures_out == nullptr) {
-        cJSON_Delete(root);
-        return false;
-    }
-
     *departures_out = new_departures;
     cJSON_Delete(root);
     return true;

@@ -473,7 +473,6 @@ static esp_err_t sendSetupErrorResponse(httpd_req_t* req) {
 }
 
 static esp_err_t handleSetupGetRequest(httpd_req_t* req) {
-    (void)req;
     return sendHtmlDocument(req, "sl-go-mini setup", kSetupPageBody);
 }
 
