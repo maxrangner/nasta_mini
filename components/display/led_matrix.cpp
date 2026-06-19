@@ -87,7 +87,7 @@ void LedMatrix::showDepartureClock(const char* time_str, uint32_t frame, uint8_t
 }
 
 void LedMatrix::showDepartureUnknown() {
-    setColor(0, kBrightness_, 0);
+    setColor(kBrightness_, kBrightness_, 0);
     drawGraphic(kQuestion);
 }
 

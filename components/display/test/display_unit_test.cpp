@@ -212,7 +212,7 @@ void test_display_shows_minutes_for_numeric_departure_text(void)
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
-void test_display_shows_minutes_for_now_departure_text(void)
+void test_display_shows_minutes_for_nu_departure_text(void)
 {
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
@@ -276,13 +276,13 @@ void test_display_turns_red_at_walk_time_plus_buffer(void)
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
-void test_display_ramps_between_green_threshold_and_red_cutoff(void)
+void test_display_stays_near_red_just_above_red_cutoff(void)
 {
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
     state.walk_time_minutes = 5;
     state.gradient_minutes = 5;
-    memcpy(state.departure_text, "10 min", sizeof("10 min"));
+    memcpy(state.departure_text, "8 min", sizeof("8 min"));
     displaySetState(state);
 
     clearLastRender();
@@ -292,8 +292,8 @@ void test_display_ramps_between_green_threshold_and_red_cutoff(void)
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
         static_cast<int>(last_render.kind)
     );
-    TEST_ASSERT_EQUAL_UINT8(2, last_render.red);
-    TEST_ASSERT_EQUAL_UINT8(4, last_render.green);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(1, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
@@ -319,6 +319,21 @@ void test_display_shows_question_for_unknown_departure_text(void)
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
     memcpy(state.departure_text, "Soon", sizeof("Soon"));
+    displaySetState(state);
+
+    clearLastRender();
+    displayUpdate();
+
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(RenderKind::DEPARTURE_UNKNOWN),
+        static_cast<int>(last_render.kind)
+    );
+}
+
+void test_display_shows_no_departures_for_empty_selected_direction(void)
+{
+    DisplayState state {};
+    state.system_state = SystemState::DEPARTURES;
     displaySetState(state);
 
     clearLastRender();
