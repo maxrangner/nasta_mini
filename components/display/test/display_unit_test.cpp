@@ -52,6 +52,10 @@ void LedMatrix::setBrightness(uint8_t brightness) {
     last_render.brightness = brightness;
 }
 
+void LedMatrix::setRotation(bool rotated_180) {
+    (void)rotated_180;
+}
+
 void LedMatrix::clear() {
     clearLastRender();
     last_render.kind = RenderKind::CLEAR;

@@ -45,6 +45,7 @@ void displayUpdate() {
 
     uint8_t brightness = displayBrightnessValue(current_state_.brightness);
     matrix_.setBrightness(brightness);
+    matrix_.setRotation(current_state_.rotate_display_180);
 
     if (active_animation_ != DisplayAnimation::NONE) {
         renderAnimation();

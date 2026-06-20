@@ -225,6 +225,7 @@ DisplayState SystemManager::buildDisplayState() const {
     display_state.system_state = system_state_;
     display_state.walk_time_minutes = settings_.walk_time_minutes;
     display_state.brightness = settings_.brightness;
+    display_state.rotate_display_180 = settings_.rotate_display_180;
 
     if (selected_direction_ < 1 ||
         selected_direction_ > kMaxDepartureDirections) {

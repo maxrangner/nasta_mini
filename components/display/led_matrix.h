@@ -11,6 +11,7 @@ public:
 
     void init();
     void setBrightness(uint8_t brightness);
+    void setRotation(bool rotated_180);
     void clear();
     void showBootFrame(uint32_t frame);
     void showConnecting(uint32_t frame);
@@ -30,6 +31,7 @@ private:
     static constexpr uint16_t   kLedCount_   = 64;
     static constexpr uint8_t    kMatrixWidth_ = 8;
 
+    bool rotated_180_ = false;
     led_strip_handle_t led_strip_ = nullptr;
     uint8_t pixel_buffer_[kLedCount_][3] = {};
     bool frame_dirty_ = false;

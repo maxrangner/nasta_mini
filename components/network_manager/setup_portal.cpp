@@ -27,6 +27,7 @@ static constexpr size_t kMaxDirectionValueLength = 3;
 static constexpr size_t kMaxWalkTimeValueLength = 3;
 static constexpr size_t kMaxBrightnessValueLength = 4;
 static constexpr size_t kMaxArrowDirectionValueLength = 7;
+static constexpr size_t kMaxRotateDisplayValueLength = 7;
 
 static constexpr size_t kMaxSetupRequestLength =
     sizeof("ssid=") - 1 +
@@ -45,6 +46,8 @@ static constexpr size_t kMaxSetupRequestLength =
     kMaxBrightnessValueLength +
     sizeof("&arrow_direction=") - 1 +
     kMaxArrowDirectionValueLength +
+    sizeof("&rotate_display=") - 1 +
+    kMaxRotateDisplayValueLength +
     1;
 
 static const char* kSharedStyle = R"css(
@@ -532,6 +535,8 @@ static esp_err_t sendSetupPage(httpd_req_t* req) {
     const char* brightness_value = portalBrightnessValue(s_setup_settings.brightness);
     const char* arrow_direction_value =
         s_setup_settings.flip_direction_arrows ? "flipped" : "normal";
+    const char* rotate_display_value =
+        s_setup_settings.rotate_display_180 ? "rotated" : "normal";
     char walk_time_value[4] = {};
     snprintf(
         walk_time_value,
@@ -819,6 +824,41 @@ static esp_err_t sendSetupPage(httpd_req_t* req) {
             </select>
             <span class="hint">Flip left and right arrow feedback if the current mapping feels backwards.</span>
           </div>
+
+          <div class="field">
+            <label for="rotate_display">Display rotation</label>
+            <select id="rotate_display" name="rotate_display">
+              <option value="normal")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, strcmp(rotate_display_value, "normal") == 0);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Normal</option>
+              <option value="rotated")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, strcmp(rotate_display_value, "rotated") == 0);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Rotated 180°</option>
+            </select>
+            <span class="hint">Rotate 180° if the device is mounted upside-down.</span>
+          </div>
         </fieldset>
 
         <button class="primary" type="submit" id="save-button">Save and restart</button>
@@ -932,6 +972,7 @@ static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
     char walk_time_buffer[4] = {};
     char brightness_buffer[8] = {};
     char arrow_direction_buffer[8] = {};
+    char rotate_display_buffer[8] = {};
 
     if (httpd_query_key_value(body, "ssid", encoded_ssid, sizeof(encoded_ssid)) != ESP_OK ||
         httpd_query_key_value(body, "site_id", site_id_buffer, sizeof(site_id_buffer)) != ESP_OK ||
@@ -943,6 +984,12 @@ static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
             "arrow_direction",
             arrow_direction_buffer,
             sizeof(arrow_direction_buffer)
+        ) != ESP_OK ||
+        httpd_query_key_value(
+            body,
+            "rotate_display",
+            rotate_display_buffer,
+            sizeof(rotate_display_buffer)
         ) != ESP_OK) {
         return sendSetupErrorResponse(req);
     }
@@ -989,6 +1036,14 @@ static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
         config.flip_direction_arrows = false;
     } else if (strcmp(arrow_direction_buffer, "flipped") == 0) {
         config.flip_direction_arrows = true;
+    } else {
+        return sendSetupErrorResponse(req);
+    }
+
+    if (strcmp(rotate_display_buffer, "normal") == 0) {
+        config.rotate_display_180 = false;
+    } else if (strcmp(rotate_display_buffer, "rotated") == 0) {
+        config.rotate_display_180 = true;
     } else {
         return sendSetupErrorResponse(req);
     }

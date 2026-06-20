@@ -88,6 +88,10 @@ void LedMatrix::setBrightness(uint8_t brightness) {
     brightness_ = brightness;
 }
 
+void LedMatrix::setRotation(bool rotated_180) {
+    rotated_180_ = rotated_180;
+}
+
 void LedMatrix::clear() {
     if (led_strip_ == nullptr) return;
     ESP_ERROR_CHECK(led_strip_clear(led_strip_));
@@ -178,6 +182,7 @@ void LedMatrix::showDirectionRight() {
 }
 
 void LedMatrix::setPixel(uint16_t index, uint8_t r, uint8_t g, uint8_t b) {
+    if (rotated_180_) index = 63 - index;
     if (pixel_buffer_[index][0] == r &&
         pixel_buffer_[index][1] == g &&
         pixel_buffer_[index][2] == b) {
