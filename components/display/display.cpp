@@ -5,8 +5,6 @@
 #include <string.h>
 
 static constexpr uint32_t kDirectionHoldFrames_ = 5;
-static constexpr uint8_t kDepartureBufferMinutes = 0;
-static constexpr uint8_t kDepartureOrangeBandMinutes = 2;
 
 static LedMatrix matrix_ {};
 static DisplayState current_state_ {};
@@ -21,6 +19,14 @@ static void renderAnimation();
 static void advanceAnimation();
 static uint32_t animationFrameLimit(DisplayAnimation animation);
 static bool looksLikeClockTime(const char* text);
+
+struct DepartureColor {
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+};
+
+static DepartureColor departureColorForMinutes(uint8_t departure_minutes, uint8_t walk_time_minutes);
 
 void displayInit() {
     if (initialized_) return;
@@ -111,26 +117,13 @@ static void showDeparture() {
     }
 
     uint8_t minutes = departure_minutes;
-    uint8_t red = 0;
-    uint8_t green = 0;
-    bool low_brightness = brightness == kDisplayBrightnessLowValue;
-    uint8_t red_cutoff_minutes = current_state_.walk_time_minutes + kDepartureBufferMinutes;
-    uint8_t orange_cutoff_minutes = red_cutoff_minutes + kDepartureOrangeBandMinutes;
-
-    if (minutes <= red_cutoff_minutes) {
-        red = brightness;
-    } else if (!low_brightness && minutes <= orange_cutoff_minutes) {
-        red = brightness;
-        green = kDisplayBrightnessLowValue;
-    } else {
-        green = brightness;
-    }
+    DepartureColor color = departureColorForMinutes(minutes, current_state_.walk_time_minutes);
 
     matrix_.showDepartureMinutes(
         minutes,
-        red,
-        green,
-        0
+        color.red,
+        color.green,
+        color.blue
     );
 }
 
@@ -173,4 +166,26 @@ static bool looksLikeClockTime(const char* text) {
            text[2] == ':' &&
            isdigit(static_cast<unsigned char>(text[3])) &&
            isdigit(static_cast<unsigned char>(text[4]));
+}
+
+static DepartureColor departureColorForMinutes(uint8_t departure_minutes, uint8_t walk_time_minutes) {
+    static constexpr DepartureColor kColors[] = {
+        {5, 0, 0},
+        {5, 1, 0},
+        {4, 2, 0},
+        {1, 5, 0},
+        {0, 5, 0},
+        {5, 5, 5},
+    };
+
+    if (departure_minutes <= walk_time_minutes) {
+        return kColors[0];
+    }
+
+    uint8_t offset = departure_minutes - walk_time_minutes;
+    if (offset >= sizeof(kColors) / sizeof(kColors[0])) {
+        return kColors[(sizeof(kColors) / sizeof(kColors[0])) - 1];
+    }
+
+    return kColors[offset];
 }

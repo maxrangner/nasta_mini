@@ -248,12 +248,12 @@ void test_display_shows_minutes_for_nu_departure_text(void)
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
-void test_display_turns_green_after_fixed_orange_band(void)
+void test_display_uses_white_for_departure_five_minutes_after_walk_time(void)
 {
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
     state.walk_time_minutes = 5;
-    memcpy(state.departure_text, "11 min", sizeof("11 min"));
+    memcpy(state.departure_text, "10 min", sizeof("10 min"));
     displaySetState(state);
 
     clearLastRender();
@@ -263,12 +263,12 @@ void test_display_turns_green_after_fixed_orange_band(void)
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
         static_cast<int>(last_render.kind)
     );
-    TEST_ASSERT_EQUAL_UINT8(0, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.red);
     TEST_ASSERT_EQUAL_UINT8(5, last_render.green);
-    TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.blue);
 }
 
-void test_display_uses_orange_immediately_above_red_cutoff(void)
+void test_display_moves_toward_green_one_minute_after_walk_time(void)
 {
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
@@ -288,7 +288,7 @@ void test_display_uses_orange_immediately_above_red_cutoff(void)
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
-void test_display_uses_orange_just_above_red_cutoff(void)
+void test_display_uses_midpoint_color_two_minutes_after_walk_time(void)
 {
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
@@ -303,38 +303,35 @@ void test_display_uses_orange_just_above_red_cutoff(void)
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
         static_cast<int>(last_render.kind)
     );
-    TEST_ASSERT_EQUAL_UINT8(5, last_render.red);
-    TEST_ASSERT_EQUAL_UINT8(1, last_render.green);
+    TEST_ASSERT_EQUAL_UINT8(4, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(2, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
-void test_display_skips_orange_band_at_low_brightness(void)
+void test_display_uses_green_four_minutes_after_walk_time(void)
 {
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
-    state.brightness = DisplayBrightness::LOW;
     state.walk_time_minutes = 5;
-    memcpy(state.departure_text, "10 min", sizeof("10 min"));
+    memcpy(state.departure_text, "9 min", sizeof("9 min"));
     displaySetState(state);
 
     clearLastRender();
     displayUpdate();
 
-    TEST_ASSERT_EQUAL_UINT8(kDisplayBrightnessLowValue, last_render.brightness);
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
         static_cast<int>(last_render.kind)
     );
     TEST_ASSERT_EQUAL_UINT8(0, last_render.red);
-    TEST_ASSERT_EQUAL_UINT8(1, last_render.green);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
-void test_display_uses_low_brightness_setting_for_far_departure_colors(void)
+void test_display_clamps_to_white_beyond_top_of_color_map(void)
 {
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
-    state.brightness = DisplayBrightness::LOW;
     state.walk_time_minutes = 5;
     memcpy(state.departure_text, "11 min", sizeof("11 min"));
     displaySetState(state);
@@ -342,13 +339,34 @@ void test_display_uses_low_brightness_setting_for_far_departure_colors(void)
     clearLastRender();
     displayUpdate();
 
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(RenderKind::DEPARTURE_MINUTES),
+        static_cast<int>(last_render.kind)
+    );
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.green);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.blue);
+}
+
+void test_display_keeps_global_low_brightness_with_direct_color_map(void)
+{
+    DisplayState state {};
+    state.system_state = SystemState::DEPARTURES;
+    state.brightness = DisplayBrightness::LOW;
+    state.walk_time_minutes = 5;
+    memcpy(state.departure_text, "9 min", sizeof("9 min"));
+    displaySetState(state);
+
+    clearLastRender();
+    displayUpdate();
+
     TEST_ASSERT_EQUAL_UINT8(kDisplayBrightnessLowValue, last_render.brightness);
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
         static_cast<int>(last_render.kind)
     );
     TEST_ASSERT_EQUAL_UINT8(0, last_render.red);
-    TEST_ASSERT_EQUAL_UINT8(1, last_render.green);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
