@@ -24,6 +24,7 @@ enum class RenderKind : uint8_t {
 
 struct RenderCall {
     RenderKind kind = RenderKind::NONE;
+    uint8_t brightness = 0;
     uint32_t frame = 0;
     uint8_t minutes = 0;
     char text[6] = {};
@@ -33,13 +34,22 @@ struct RenderCall {
 };
 
 static RenderCall last_render {};
+static uint8_t current_brightness = kDisplayBrightnessHighValue;
 
 static void clearLastRender() {
+    uint8_t brightness = current_brightness;
     last_render = RenderCall {};
+    last_render.brightness = brightness;
 }
 
 void LedMatrix::init() {
+    current_brightness = kDisplayBrightnessHighValue;
     clearLastRender();
+}
+
+void LedMatrix::setBrightness(uint8_t brightness) {
+    current_brightness = brightness;
+    last_render.brightness = brightness;
 }
 
 void LedMatrix::clear() {
@@ -127,6 +137,7 @@ void setUp(void)
     displayInit();
     displayPlayAnimation(DisplayAnimation::NONE);
     displaySetState(DisplayState {});
+    current_brightness = kDisplayBrightnessHighValue;
     clearLastRender();
 }
 
@@ -207,7 +218,7 @@ void test_display_shows_minutes_for_numeric_departure_text(void)
         static_cast<int>(last_render.kind)
     );
     TEST_ASSERT_EQUAL_UINT8(5, last_render.minutes);
-    TEST_ASSERT_EQUAL_UINT8(6, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.red);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
@@ -229,7 +240,7 @@ void test_display_shows_minutes_for_nu_departure_text(void)
         static_cast<int>(last_render.kind)
     );
     TEST_ASSERT_EQUAL_UINT8(0, last_render.minutes);
-    TEST_ASSERT_EQUAL_UINT8(6, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.red);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
@@ -251,7 +262,7 @@ void test_display_keeps_far_departure_green_after_walk_time_offset(void)
         static_cast<int>(last_render.kind)
     );
     TEST_ASSERT_EQUAL_UINT8(0, last_render.red);
-    TEST_ASSERT_EQUAL_UINT8(6, last_render.green);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
 
@@ -271,7 +282,7 @@ void test_display_turns_red_at_walk_time_plus_buffer(void)
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
         static_cast<int>(last_render.kind)
     );
-    TEST_ASSERT_EQUAL_UINT8(6, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(5, last_render.red);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }
@@ -292,7 +303,30 @@ void test_display_stays_near_red_just_above_red_cutoff(void)
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
         static_cast<int>(last_render.kind)
     );
-    TEST_ASSERT_EQUAL_UINT8(5, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(4, last_render.red);
+    TEST_ASSERT_EQUAL_UINT8(1, last_render.green);
+    TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
+}
+
+void test_display_uses_low_brightness_setting_for_departure_colors(void)
+{
+    DisplayState state {};
+    state.system_state = SystemState::DEPARTURES;
+    state.brightness = DisplayBrightness::LOW;
+    state.walk_time_minutes = 5;
+    state.gradient_minutes = 5;
+    memcpy(state.departure_text, "12 min", sizeof("12 min"));
+    displaySetState(state);
+
+    clearLastRender();
+    displayUpdate();
+
+    TEST_ASSERT_EQUAL_UINT8(kDisplayBrightnessLowValue, last_render.brightness);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(RenderKind::DEPARTURE_MINUTES),
+        static_cast<int>(last_render.kind)
+    );
+    TEST_ASSERT_EQUAL_UINT8(0, last_render.red);
     TEST_ASSERT_EQUAL_UINT8(1, last_render.green);
     TEST_ASSERT_EQUAL_UINT8(0, last_render.blue);
 }

@@ -46,6 +46,7 @@ static DeviceSettings makeValidSettings() {
     settings.startup_direction = 1;
     settings.walk_time_minutes = 4;
     settings.gradient_minutes = 5;
+    settings.brightness = DisplayBrightness::HIGH;
     return settings;
 }
 
@@ -58,6 +59,7 @@ static DeviceSettings makeSetupModeSettings() {
     settings.startup_direction = 2;
     settings.walk_time_minutes = 6;
     settings.gradient_minutes = 8;
+    settings.brightness = DisplayBrightness::LOW;
     settings.setup.needs_setup = true;
     return settings;
 }
@@ -254,6 +256,10 @@ void test_system_manager_start_runtime_queues_start_normal_mode_when_loaded_sett
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.startup_direction, command.settings.startup_direction);
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.walk_time_minutes, command.settings.walk_time_minutes);
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.gradient_minutes, command.settings.gradient_minutes);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(loaded_settings_stub.brightness),
+        static_cast<int>(command.settings.brightness)
+    );
     TEST_ASSERT_EQUAL_CHAR(loaded_settings_stub.wifi.ssid[0], command.settings.wifi.ssid[0]);
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(DisplayAnimation::BOOT),
@@ -284,6 +290,10 @@ void test_system_manager_start_runtime_queues_start_setup_mode_with_loaded_setti
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.startup_direction, command.settings.startup_direction);
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.walk_time_minutes, command.settings.walk_time_minutes);
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.gradient_minutes, command.settings.gradient_minutes);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(loaded_settings_stub.brightness),
+        static_cast<int>(command.settings.brightness)
+    );
     TEST_ASSERT_EQUAL_STRING(loaded_settings_stub.wifi.ssid, command.settings.wifi.ssid);
     TEST_ASSERT_EQUAL_STRING(loaded_settings_stub.wifi.password, command.settings.wifi.password);
 }
@@ -365,4 +375,8 @@ void test_system_manager_enters_departures_state_when_network_has_departures(voi
     TEST_ASSERT_EQUAL_STRING("5 min", display_state.departure_text);
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.walk_time_minutes, display_state.walk_time_minutes);
     TEST_ASSERT_EQUAL_UINT8(loaded_settings_stub.gradient_minutes, display_state.gradient_minutes);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(loaded_settings_stub.brightness),
+        static_cast<int>(display_state.brightness)
+    );
 }

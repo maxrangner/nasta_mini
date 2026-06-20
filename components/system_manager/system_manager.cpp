@@ -24,6 +24,9 @@ void SystemManager::init() {
         settings_.startup_direction != 2) {
         settings_.startup_direction = 1;
     }
+    if (!isValidDisplayBrightness(settings_.brightness)) {
+        settings_.brightness = kDefaultDisplayBrightness;
+    }
 
     selected_direction_ = settings_.startup_direction;
 
@@ -217,6 +220,7 @@ DisplayState SystemManager::buildDisplayState() const {
     display_state.system_state = system_state_;
     display_state.walk_time_minutes = settings_.walk_time_minutes;
     display_state.gradient_minutes = settings_.gradient_minutes;
+    display_state.brightness = settings_.brightness;
 
     if (selected_direction_ < 1 ||
         selected_direction_ > kMaxDepartureDirections) {

@@ -13,9 +13,6 @@ struct RgbColor {
     uint8_t blue = 0;
 };
 
-static constexpr RgbColor kDepartureGreen { 0, 6, 0 };
-static constexpr RgbColor kDepartureRed { 6, 0, 0 };
-
 static LedMatrix matrix_ {};
 static DisplayState current_state_ {};
 static DisplayAnimation active_animation_ = DisplayAnimation::NONE;
@@ -29,10 +26,13 @@ static void renderAnimation();
 static void advanceAnimation();
 static uint32_t animationFrameLimit(DisplayAnimation animation);
 static bool looksLikeClockTime(const char* text);
+static RgbColor departureGreen(uint8_t brightness);
+static RgbColor departureRed(uint8_t brightness);
 static RgbColor colorForDepartureMinutes(
     uint8_t departure_minutes,
     uint8_t walk_time_minutes,
-    uint8_t gradient_minutes
+    uint8_t gradient_minutes,
+    uint8_t brightness
 );
 
 void displayInit() {
@@ -55,6 +55,9 @@ void displayPlayAnimation(DisplayAnimation animation) {
 
 void displayUpdate() {
     if (!initialized_) return;
+
+    uint8_t brightness = displayBrightnessValue(current_state_.brightness);
+    matrix_.setBrightness(brightness);
 
     if (active_animation_ != DisplayAnimation::NONE) {
         renderAnimation();
@@ -81,6 +84,7 @@ static void renderState() {
 
 static void showDeparture() {
     const char* departure_text = current_state_.departure_text;
+    uint8_t brightness = displayBrightnessValue(current_state_.brightness);
 
     if (departure_text[0] == '\0') {
         matrix_.showDepartureUnknown();
@@ -88,12 +92,13 @@ static void showDeparture() {
     }
 
     if (looksLikeClockTime(departure_text)) {
+        RgbColor color = departureGreen(brightness);
         matrix_.showDepartureClock(
             departure_text,
             frame_,
-            kDepartureGreen.red,
-            kDepartureGreen.green,
-            kDepartureGreen.blue
+            color.red,
+            color.green,
+            color.blue
         );
         return;
     }
@@ -122,7 +127,8 @@ static void showDeparture() {
     RgbColor departure_color = colorForDepartureMinutes(
         minutes,
         current_state_.walk_time_minutes,
-        current_state_.gradient_minutes
+        current_state_.gradient_minutes,
+        brightness
     );
 
     matrix_.showDepartureMinutes(
@@ -174,20 +180,31 @@ static bool looksLikeClockTime(const char* text) {
            isdigit(static_cast<unsigned char>(text[4]));
 }
 
+static RgbColor departureGreen(uint8_t brightness) {
+    return { 0, brightness, 0 };
+}
+
+static RgbColor departureRed(uint8_t brightness) {
+    return { brightness, 0, 0 };
+}
+
 static RgbColor colorForDepartureMinutes(
     uint8_t departure_minutes,
     uint8_t walk_time_minutes,
-    uint8_t gradient_minutes
+    uint8_t gradient_minutes,
+    uint8_t brightness
 ) {
+    RgbColor red = departureRed(brightness);
+    RgbColor green = departureGreen(brightness);
     int red_cutoff_minutes = static_cast<int>(walk_time_minutes) + kDepartureBufferMinutes;
     int green_cutoff_minutes = red_cutoff_minutes + static_cast<int>(gradient_minutes);
 
     if (departure_minutes <= red_cutoff_minutes) {
-        return kDepartureRed;
+        return red;
     }
 
     if (gradient_minutes == 0 || departure_minutes >= green_cutoff_minutes) {
-        return kDepartureGreen;
+        return green;
     }
 
     uint8_t minutes_above_red_cutoff =
@@ -195,11 +212,11 @@ static RgbColor colorForDepartureMinutes(
 
     return {
         static_cast<uint8_t>(
-            kDepartureRed.red -
-            (kDepartureRed.red * minutes_above_red_cutoff) / gradient_minutes
+            red.red -
+            (red.red * minutes_above_red_cutoff) / gradient_minutes
         ),
         static_cast<uint8_t>(
-            (kDepartureGreen.green * minutes_above_red_cutoff) / gradient_minutes
+            (green.green * minutes_above_red_cutoff) / gradient_minutes
         ),
         0
     };

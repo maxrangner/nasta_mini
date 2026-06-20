@@ -6,6 +6,11 @@
 #include "soc/soc_caps.h"
 #include <string.h>
 
+static uint8_t bootAnimationLevel(uint8_t brightness, uint8_t step) {
+    uint8_t level = static_cast<uint8_t>(step * 2);
+    return level < brightness ? level : brightness;
+}
+
 void LedMatrix::init() {
     led_strip_config_t strip_config = {
         .strip_gpio_num = kLedPin_,
@@ -32,6 +37,10 @@ void LedMatrix::init() {
     frame_dirty_ = false;
 }
 
+void LedMatrix::setBrightness(uint8_t brightness) {
+    brightness_ = brightness;
+}
+
 void LedMatrix::clear() {
     if (led_strip_ == nullptr) return;
     ESP_ERROR_CHECK(led_strip_clear(led_strip_));
@@ -42,9 +51,9 @@ void LedMatrix::clear() {
 void LedMatrix::showBootFrame(uint32_t frame) {
     if (led_strip_ == nullptr) return;
     const uint8_t* graphic = kBootAnimation[frame % kBootFrameCount];
-    uint8_t r = static_cast<uint8_t>((frame % 6) * 2);
-    uint8_t g = static_cast<uint8_t>(((frame + 2) % 6) * 2);
-    uint8_t b = static_cast<uint8_t>(((frame + 4) % 6) * 2);
+    uint8_t r = bootAnimationLevel(brightness_, static_cast<uint8_t>(frame % 6));
+    uint8_t g = bootAnimationLevel(brightness_, static_cast<uint8_t>((frame + 2) % 6));
+    uint8_t b = bootAnimationLevel(brightness_, static_cast<uint8_t>((frame + 4) % 6));
     for (uint16_t i = 0; i < kLedCount_; i++) {
         if (graphic[i] == 1) {
             setPixel(i, r, g, b);
@@ -56,17 +65,17 @@ void LedMatrix::showBootFrame(uint32_t frame) {
 }
 
 void LedMatrix::showConnecting(uint32_t frame) {
-    setColor(0, 0, kBrightness_);
+    setColor(0, 0, brightness_);
     drawGraphic(kWorkAnimation[frame % 4]);
 }
 
 void LedMatrix::showConnected() {
-    setColor(0, kBrightness_, 0);
+    setColor(0, brightness_, 0);
     drawGraphic(kOk);
 }
 
 void LedMatrix::showSetup() {
-    setColor(0, kBrightness_, kBrightness_);
+    setColor(0, brightness_, brightness_);
     drawGraphic(kHeart);
 }
 
@@ -87,32 +96,32 @@ void LedMatrix::showDepartureClock(const char* time_str, uint32_t frame, uint8_t
 }
 
 void LedMatrix::showDepartureUnknown() {
-    setColor(kBrightness_, kBrightness_, 0);
+    setColor(brightness_, brightness_, 0);
     drawGraphic(kQuestion);
 }
 
 void LedMatrix::showNoDepartures() {
-    setColor(kBrightness_, kBrightness_, 0);
+    setColor(brightness_, brightness_, 0);
     drawGraphic(kQuestion);
 }
 
 void LedMatrix::showApiError() {
-    setColor(kBrightness_, 0, 0);
+    setColor(brightness_, 0, 0);
     drawGraphic(kQuestion);
 }
 
 void LedMatrix::showNetworkError() {
-    setColor(kBrightness_, 0, 0);
+    setColor(brightness_, 0, 0);
     drawGraphic(kCross);
 }
 
 void LedMatrix::showDirectionLeft() {
-    setColor(0, kBrightness_, 0);
+    setColor(0, brightness_, 0);
     drawGraphic(kArrowLeft);
 }
 
 void LedMatrix::showDirectionRight() {
-    setColor(0, kBrightness_, 0);
+    setColor(0, brightness_, 0);
     drawGraphic(kArrowRight);
 }
 

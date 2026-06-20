@@ -539,6 +539,7 @@ bool NetworkManager::jsonParser(const char* buffer, Departures* departures_out) 
         }
 
         snprintf(new_departure.display, sizeof(new_departure.display), "%s", display->valuestring);
+        ESP_LOGI(TAG, "departure display: %s", new_departure.display);
 
         if (direction >= 1 &&
             direction <= kMaxDepartureDirections) {

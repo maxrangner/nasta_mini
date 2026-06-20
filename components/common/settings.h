@@ -3,10 +3,19 @@
 #include <stdint.h>
 #include "types.h"
 
-static constexpr uint8_t kDeviceSettingsVersion = 3;
+static constexpr uint8_t kDeviceSettingsVersion = 4;
 static constexpr uint8_t kDefaultGradientMinutes = 5;
 static constexpr uint8_t kMaxWifiSsidLength = 32;
 static constexpr uint8_t kMaxWifiPasswordLength = 64;
+
+enum class DisplayBrightness : uint8_t {
+    LOW = 0,
+    HIGH = 1
+};
+
+static constexpr DisplayBrightness kDefaultDisplayBrightness = DisplayBrightness::HIGH;
+static constexpr uint8_t kDisplayBrightnessLowValue = 1;
+static constexpr uint8_t kDisplayBrightnessHighValue = 5;
 
 struct WifiSettings {
     char ssid[kMaxWifiSsidLength + 1] = {};
@@ -30,6 +39,7 @@ struct DeviceSettings {
     SetupSettings setup {};
     uint8_t walk_time_minutes = 0;
     uint8_t gradient_minutes = kDefaultGradientMinutes;
+    DisplayBrightness brightness = kDefaultDisplayBrightness;
 };
 
 struct SetupConfig {
@@ -38,7 +48,19 @@ struct SetupConfig {
     uint8_t startup_direction = 1;
     uint8_t walk_time_minutes = 0;
     uint8_t gradient_minutes = kDefaultGradientMinutes;
+    DisplayBrightness brightness = kDefaultDisplayBrightness;
 };
+
+inline bool isValidDisplayBrightness(DisplayBrightness brightness) {
+    return brightness == DisplayBrightness::LOW ||
+           brightness == DisplayBrightness::HIGH;
+}
+
+inline uint8_t displayBrightnessValue(DisplayBrightness brightness) {
+    return brightness == DisplayBrightness::LOW
+        ? kDisplayBrightnessLowValue
+        : kDisplayBrightnessHighValue;
+}
 
 inline bool isValidSetupConfig(const SetupConfig& config) {
     if (config.wifi.ssid[0] == '\0') {
@@ -54,6 +76,10 @@ inline bool isValidSetupConfig(const SetupConfig& config) {
         return false;
     }
 
+    if (!isValidDisplayBrightness(config.brightness)) {
+        return false;
+    }
+
     return true;
 }
 
@@ -64,6 +90,7 @@ inline void applySetupConfig(DeviceSettings& settings, const SetupConfig& config
     settings.setup.needs_setup = false;
     settings.walk_time_minutes = config.walk_time_minutes;
     settings.gradient_minutes = config.gradient_minutes;
+    settings.brightness = config.brightness;
 }
 
 enum class BootMode : uint8_t {

@@ -26,6 +26,7 @@ static constexpr size_t kMaxTransportValueLength = 15;
 static constexpr size_t kMaxDirectionValueLength = 3;
 static constexpr size_t kMaxWalkTimeValueLength = 3;
 static constexpr size_t kMaxGradientValueLength = 3;
+static constexpr size_t kMaxBrightnessValueLength = 4;
 
 static constexpr size_t kMaxSetupRequestLength =
     sizeof("ssid=") - 1 +
@@ -42,6 +43,8 @@ static constexpr size_t kMaxSetupRequestLength =
     kMaxWalkTimeValueLength +
     sizeof("&gradient=") - 1 +
     kMaxGradientValueLength +
+    sizeof("&brightness=") - 1 +
+    kMaxBrightnessValueLength +
     1;
 
 static const char* kSharedStyle = R"css(
@@ -495,6 +498,10 @@ static const char* portalTransportValue(TransportMode transport_mode) {
     }
 }
 
+static const char* portalBrightnessValue(DisplayBrightness brightness) {
+    return brightness == DisplayBrightness::LOW ? "low" : "high";
+}
+
 static esp_err_t sendSelectedAttribute(httpd_req_t* req, bool selected) {
     if (!selected) {
         return ESP_OK;
@@ -522,6 +529,7 @@ static esp_err_t sendSetupPage(httpd_req_t* req) {
     uint8_t startup_direction =
         s_setup_settings.startup_direction == 2 ? 2 : 1;
     const char* transport_value = portalTransportValue(s_setup_settings.site.transport_filter);
+    const char* brightness_value = portalBrightnessValue(s_setup_settings.brightness);
     char walk_time_value[4] = {};
     char gradient_value[4] = {};
     snprintf(
@@ -732,6 +740,41 @@ static esp_err_t sendSetupPage(httpd_req_t* req) {
           </div>
 
           <div class="field">
+            <label for="brightness">Brightness</label>
+            <select id="brightness" name="brightness">
+              <option value="low")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, strcmp(brightness_value, "low") == 0);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>Low</option>
+              <option value="high")html"
+    );
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = sendSelectedAttribute(req, strcmp(brightness_value, "high") == 0);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = httpd_resp_sendstr_chunk(
+        req,
+        R"html(>High</option>
+            </select>
+            <span class="hint">Low uses LED level 1. High uses LED level 5.</span>
+          </div>
+
+          <div class="field">
             <label for="direction">Startup direction</label>
             <select id="direction" name="direction">
               <option value="1")html"
@@ -877,12 +920,14 @@ static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
     char transport_buffer[16] = {};
     char walk_time_buffer[4] = {};
     char gradient_buffer[4] = {};
+    char brightness_buffer[8] = {};
 
     if (httpd_query_key_value(body, "ssid", encoded_ssid, sizeof(encoded_ssid)) != ESP_OK ||
         httpd_query_key_value(body, "site_id", site_id_buffer, sizeof(site_id_buffer)) != ESP_OK ||
         httpd_query_key_value(body, "direction", direction_buffer, sizeof(direction_buffer)) != ESP_OK ||
         httpd_query_key_value(body, "walk_time", walk_time_buffer, sizeof(walk_time_buffer)) != ESP_OK ||
-        httpd_query_key_value(body, "gradient", gradient_buffer, sizeof(gradient_buffer)) != ESP_OK) {
+        httpd_query_key_value(body, "gradient", gradient_buffer, sizeof(gradient_buffer)) != ESP_OK ||
+        httpd_query_key_value(body, "brightness", brightness_buffer, sizeof(brightness_buffer)) != ESP_OK) {
         return sendSetupErrorResponse(req);
     }
 
@@ -924,6 +969,14 @@ static esp_err_t handleSetupSaveRequest(httpd_req_t* req) {
         return sendSetupErrorResponse(req);
     }
     config.gradient_minutes = static_cast<uint8_t>(gradient);
+
+    if (strcmp(brightness_buffer, "low") == 0) {
+        config.brightness = DisplayBrightness::LOW;
+    } else if (strcmp(brightness_buffer, "high") == 0) {
+        config.brightness = DisplayBrightness::HIGH;
+    } else {
+        return sendSetupErrorResponse(req);
+    }
 
     if (!isValidSetupConfig(config)) {
         return sendSetupErrorResponse(req);
