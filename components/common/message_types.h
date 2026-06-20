@@ -46,7 +46,10 @@ static constexpr uint8_t kMaxDepartureDirections = 2;
 static constexpr uint8_t kMaxDeparturesPerDirection = 3;
 
 struct Departure {
+    char destination[50];
     char display[10];
+    uint8_t direction_code;
+    uint16_t id;
 };
 
 struct DirectionDepartures {

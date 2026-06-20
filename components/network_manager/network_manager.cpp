@@ -496,61 +496,68 @@ bool NetworkManager::jsonParser(const char* buffer, Departures* departures_out) 
     
     Departures new_departures {};
     
-    uint8_t count = cJSON_GetArraySize(departures);
+    int count = cJSON_GetArraySize(departures);
     ESP_LOGW(TAG, "Departures: %d", count);
 
-    for (uint8_t i = 0; i < count; i++) {
-        Departure new_departure {};
+    for (int i = 0; i < count; i++) {
         cJSON* departure = cJSON_GetArrayItem(departures, i);
-
         cJSON* state = cJSON_GetObjectItem(departure, "state");
-        if (!cJSON_IsString(state)) {
-            ESP_LOGW(TAG, "Skipping departure without state");
-            continue;
-        }
-        if (strcmp(state->valuestring, "EXPECTED") != 0) {
+        if (!cJSON_IsString(state) || strcmp(state->valuestring, "EXPECTED") != 0) {
             continue;
         }
 
-        cJSON* direction_code_json = cJSON_GetObjectItem(departure, "direction_code");
-        cJSON* display = cJSON_GetObjectItem(departure, "display");
+        cJSON* destination_json = cJSON_GetObjectItem(departure, "destination");
+        cJSON* direction_json = cJSON_GetObjectItem(departure, "direction_code");
+        cJSON* display_json = cJSON_GetObjectItem(departure, "display");
         cJSON* line_json = cJSON_GetObjectItem(departure, "line");
+        cJSON* id_json =
+            cJSON_IsObject(line_json) ? cJSON_GetObjectItem(line_json, "id") : nullptr;
+        cJSON* transport_mode_json =
+            cJSON_IsObject(line_json) ? cJSON_GetObjectItem(line_json, "transport_mode") : nullptr;
 
-        if (!cJSON_IsObject(line_json) ||
-            !cJSON_IsNumber(direction_code_json) ||
-            !cJSON_IsString(display)) {
-            ESP_LOGW(TAG, "Skipping malformed departure");
+        if (!cJSON_IsString(destination_json) ||
+            !cJSON_IsNumber(direction_json) ||
+            !cJSON_IsString(display_json) ||
+            !cJSON_IsString(transport_mode_json) ||
+            !cJSON_IsNumber(id_json)) {
             continue;
         }
 
-        cJSON* transport_mode_json = cJSON_GetObjectItem(line_json, "transport_mode");
-
-        if (!cJSON_IsString(transport_mode_json)) {
-            ESP_LOGW(TAG, "Skipping malformed departure");
+        int direction = direction_json->valueint;
+        if (direction < 1 || direction > kMaxDepartureDirections) {
             continue;
         }
 
-        uint8_t direction = direction_code_json->valueint;
         TransportMode transport_mode = toTransportMode(transport_mode_json->valuestring);
-
         if (applied_settings_.site.transport_filter != TransportMode::UNKNOWN &&
             transport_mode != applied_settings_.site.transport_filter) {
             continue;
         }
 
-        snprintf(new_departure.display, sizeof(new_departure.display), "%s", display->valuestring);
-        ESP_LOGI(TAG, "departure display: %s", new_departure.display);
-
-        if (direction >= 1 &&
-            direction <= kMaxDepartureDirections) {
-            DirectionDepartures& direction_departures =
-                new_departures.directions[direction - 1];
-
-            if (direction_departures.count < kMaxDeparturesPerDirection) {
-                direction_departures.departures[direction_departures.count] = new_departure;
-                direction_departures.count++;
-            }
+        DirectionDepartures& direction_departures = new_departures.directions[direction - 1];
+        if (direction_departures.count >= kMaxDeparturesPerDirection) {
+            continue;
         }
+
+        Departure new_departure {};
+        snprintf(
+            new_departure.destination,
+            sizeof(new_departure.destination),
+            "%s",
+            destination_json->valuestring
+        );
+        snprintf(
+            new_departure.display,
+            sizeof(new_departure.display),
+            "%s",
+            display_json->valuestring
+        );
+        new_departure.direction_code = direction;
+        new_departure.id = id_json->valueint;
+        direction_departures.departures[direction_departures.count] = new_departure;
+
+        ESP_LOGI(TAG, "Parsed departure - %d. %s %s", direction, destination_json->valuestring, display_json->valuestring);
+        direction_departures.count++;
     }
     *departures_out = new_departures;
     cJSON_Delete(root);
