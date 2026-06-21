@@ -21,6 +21,7 @@ struct HostQueue {
 static DeviceSettings loaded_settings_stub {};
 static Queues test_queues {};
 static SystemManager* system_manager = nullptr;
+static Display test_display {};
 static DisplayState last_display_state {};
 static DisplayAnimation last_animation = DisplayAnimation::NONE;
 
@@ -104,7 +105,8 @@ void setUp(void)
     test_queues = makeQueues();
     last_display_state = DisplayState {};
     last_animation = DisplayAnimation::NONE;
-    system_manager = new SystemManager(&test_queues);
+    test_display = Display {};
+    system_manager = new SystemManager(&test_queues, &test_display);
     system_manager->init();
 }
 
@@ -227,15 +229,18 @@ bool saveDeviceSettings(const DeviceSettings& settings) {
     return true;
 }
 
-void displaySetState(const DisplayState& display_state) {
+void Display::init() {
+}
+
+void Display::setState(const DisplayState& display_state) {
     last_display_state = display_state;
 }
 
-void displayPlayAnimation(DisplayAnimation animation) {
+void Display::playAnimation(DisplayAnimation animation) {
     last_animation = animation;
 }
 
-void displayUpdate() {
+void Display::update() {
 }
 
 void test_system_manager_start_runtime_queues_start_normal_mode_when_loaded_settings_are_valid(void)
@@ -271,7 +276,7 @@ void test_system_manager_start_runtime_queues_start_setup_mode_with_loaded_setti
 {
     loaded_settings_stub = makeSetupModeSettings();
     delete system_manager;
-    system_manager = new SystemManager(&test_queues);
+    system_manager = new SystemManager(&test_queues, &test_display);
     system_manager->init();
 
     SystemManagerHostTestAccess::startRuntime(*system_manager);
@@ -398,7 +403,7 @@ void test_system_manager_flips_arrow_mapping_when_setting_is_on(void)
     loaded_settings_stub = makeValidSettings();
     loaded_settings_stub.flip_direction_arrows = true;
     delete system_manager;
-    system_manager = new SystemManager(&test_queues);
+    system_manager = new SystemManager(&test_queues, &test_display);
     system_manager->init();
 
     SystemEvent system_event {};

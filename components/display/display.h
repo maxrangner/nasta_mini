@@ -1,8 +1,9 @@
 #pragma once
 
 #include <stdint.h>
-#include "led_matrix.h"
 #include "message_types.h"
+
+class LedMatrix;
 
 enum class DisplayAnimation : uint8_t {
     NONE,
@@ -27,7 +28,7 @@ public:
     void update();
 
 private:
-    LedMatrix matrix_ {};
+    LedMatrix* matrix_ = nullptr;
     DisplayState state_ {};
     DisplayAnimation animation_ = DisplayAnimation::NONE;
     uint32_t frame_ = 0;

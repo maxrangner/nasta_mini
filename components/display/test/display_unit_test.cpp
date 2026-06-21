@@ -33,6 +33,7 @@ struct RenderCall {
     uint8_t blue = 0;
 };
 
+static Display display_under_test {};
 static RenderCall last_render {};
 static uint8_t current_brightness = kDisplayBrightnessHighValue;
 
@@ -139,9 +140,10 @@ void LedMatrix::showDirectionRight() {
 
 void setUp(void)
 {
-    displayInit();
-    displayPlayAnimation(DisplayAnimation::NONE);
-    displaySetState(DisplayState {});
+    display_under_test = Display {};
+    display_under_test.init();
+    display_under_test.playAnimation(DisplayAnimation::NONE);
+    display_under_test.setState(DisplayState {});
     current_brightness = kDisplayBrightnessHighValue;
     clearLastRender();
 }
@@ -154,18 +156,18 @@ void test_display_boot_animation_runs_full_length_before_rendering_state(void)
 {
     DisplayState state {};
     state.system_state = SystemState::CONNECTING;
-    displaySetState(state);
-    displayPlayAnimation(DisplayAnimation::BOOT);
+    display_under_test.setState(state);
+    display_under_test.playAnimation(DisplayAnimation::BOOT);
 
     for (uint32_t frame = 0; frame < LedMatrix::kBootFrameCount; frame++) {
         clearLastRender();
-        displayUpdate();
+        display_under_test.update();
         TEST_ASSERT_EQUAL_INT(static_cast<int>(RenderKind::BOOT), static_cast<int>(last_render.kind));
         TEST_ASSERT_EQUAL_UINT32(frame, last_render.frame);
     }
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
     TEST_ASSERT_EQUAL_INT(static_cast<int>(RenderKind::CONNECTING), static_cast<int>(last_render.kind));
 }
 
@@ -173,24 +175,24 @@ void test_display_direction_animation_finishes_after_state_changes(void)
 {
     DisplayState state {};
     state.system_state = SystemState::CONNECTING;
-    displaySetState(state);
-    displayPlayAnimation(DisplayAnimation::DIRECTION_LEFT);
+    display_under_test.setState(state);
+    display_under_test.playAnimation(DisplayAnimation::DIRECTION_LEFT);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
     TEST_ASSERT_EQUAL_INT(static_cast<int>(RenderKind::DIRECTION_LEFT), static_cast<int>(last_render.kind));
 
     state.system_state = SystemState::CONNECTED;
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
     TEST_ASSERT_EQUAL_INT(static_cast<int>(RenderKind::DIRECTION_LEFT), static_cast<int>(last_render.kind));
 
     bool finished = false;
     for (uint8_t i = 0; i < 10; i++) {
         clearLastRender();
-        displayUpdate();
+        display_under_test.update();
 
         if (last_render.kind == RenderKind::CONNECTED) {
             finished = true;
@@ -212,10 +214,10 @@ void test_display_shows_minutes_for_numeric_departure_text(void)
     state.system_state = SystemState::DEPARTURES;
     state.walk_time_minutes = 5;
     memcpy(state.departure_text, "5 min", sizeof("5 min"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
@@ -233,10 +235,10 @@ void test_display_shows_minutes_for_nu_departure_text(void)
     state.system_state = SystemState::DEPARTURES;
     memcpy(state.departure_text, "Nu", sizeof("Nu"));
     state.walk_time_minutes = 5;
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
@@ -254,10 +256,10 @@ void test_display_uses_white_for_departure_five_minutes_after_walk_time(void)
     state.system_state = SystemState::DEPARTURES;
     state.walk_time_minutes = 5;
     memcpy(state.departure_text, "10 min", sizeof("10 min"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
@@ -274,10 +276,10 @@ void test_display_moves_toward_green_one_minute_after_walk_time(void)
     state.system_state = SystemState::DEPARTURES;
     state.walk_time_minutes = 5;
     memcpy(state.departure_text, "6 min", sizeof("6 min"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
@@ -294,10 +296,10 @@ void test_display_uses_midpoint_color_two_minutes_after_walk_time(void)
     state.system_state = SystemState::DEPARTURES;
     state.walk_time_minutes = 5;
     memcpy(state.departure_text, "7 min", sizeof("7 min"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
@@ -314,10 +316,10 @@ void test_display_uses_green_four_minutes_after_walk_time(void)
     state.system_state = SystemState::DEPARTURES;
     state.walk_time_minutes = 5;
     memcpy(state.departure_text, "9 min", sizeof("9 min"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
@@ -334,10 +336,10 @@ void test_display_clamps_to_white_beyond_top_of_color_map(void)
     state.system_state = SystemState::DEPARTURES;
     state.walk_time_minutes = 5;
     memcpy(state.departure_text, "11 min", sizeof("11 min"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_MINUTES),
@@ -355,10 +357,10 @@ void test_display_keeps_global_low_brightness_with_direct_color_map(void)
     state.brightness = DisplayBrightness::LOW;
     state.walk_time_minutes = 5;
     memcpy(state.departure_text, "9 min", sizeof("9 min"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_UINT8(kDisplayBrightnessLowValue, last_render.brightness);
     TEST_ASSERT_EQUAL_INT(
@@ -375,10 +377,10 @@ void test_display_shows_clock_for_clock_departure_text(void)
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
     memcpy(state.departure_text, "12:34", sizeof("12:34"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_CLOCK),
@@ -392,10 +394,10 @@ void test_display_shows_question_for_unknown_departure_text(void)
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
     memcpy(state.departure_text, "Soon", sizeof("Soon"));
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_UNKNOWN),
@@ -407,10 +409,10 @@ void test_display_shows_no_departures_for_empty_selected_direction(void)
 {
     DisplayState state {};
     state.system_state = SystemState::DEPARTURES;
-    displaySetState(state);
+    display_under_test.setState(state);
 
     clearLastRender();
-    displayUpdate();
+    display_under_test.update();
 
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RenderKind::DEPARTURE_UNKNOWN),
