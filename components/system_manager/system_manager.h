@@ -18,6 +18,7 @@ class SystemManager {
     TaskHandle_t task_system_manager_ = nullptr;
     QueueHandle_t system_in_queue_ = nullptr;
     QueueHandle_t network_in_queue_ = nullptr;
+    Display* display_ = nullptr;
     button_t main_button_ {};
     DeviceSettings settings_ {};
     NetworkState network_state_ {};
@@ -25,7 +26,7 @@ class SystemManager {
     uint8_t selected_direction_ = 1;
     friend struct SystemManagerHostTestAccess;
 public:
-    SystemManager(Queues* queues);
+    SystemManager(Queues* queues, Display* display);
     void init();
 private:
     static void systemTask(void* pvParameters);

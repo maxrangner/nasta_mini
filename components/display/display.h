@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "led_matrix.h"
 #include "message_types.h"
 
 enum class DisplayAnimation : uint8_t {
@@ -18,7 +19,20 @@ struct DisplayState {
     bool rotate_display_180 = false;
 };
 
-void displayInit();
-void displaySetState(const DisplayState& state);
-void displayPlayAnimation(DisplayAnimation animation);
-void displayUpdate();
+class Display {
+public:
+    void init();
+    void setState(const DisplayState& state);
+    void playAnimation(DisplayAnimation animation);
+    void update();
+
+private:
+    LedMatrix matrix_ {};
+    DisplayState state_ {};
+    DisplayAnimation animation_ = DisplayAnimation::NONE;
+    uint32_t frame_ = 0;
+    uint32_t anim_frame_ = 0;
+
+    void renderState();
+    void showDeparture();
+};

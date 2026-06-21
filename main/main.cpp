@@ -16,9 +16,10 @@ extern "C" void app_main(void)
         .network_in_queue = xQueueCreate(kNetworkQueueLength, sizeof(NetworkCommand)),
     };
 
-    displayInit();
+    Display display;
+    display.init();
 
-    SystemManager system_manager(&queues);
+    SystemManager system_manager(&queues, &display);
     NetworkManager network_manager(&queues);
     network_manager.init();
     system_manager.init();

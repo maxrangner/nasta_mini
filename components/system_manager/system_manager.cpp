@@ -6,9 +6,10 @@
 static const char *TAG = "system manager";
 static constexpr uint32_t kControlQueueSendTimeoutMs = 10;
 
-SystemManager::SystemManager(Queues* queues)
+SystemManager::SystemManager(Queues* queues, Display* display)
     : system_in_queue_(queues->system_in_queue),
-      network_in_queue_(queues->network_in_queue) {
+      network_in_queue_(queues->network_in_queue),
+      display_(display) {
 }
 
 void SystemManager::init() {
@@ -87,7 +88,7 @@ void SystemManager::startRuntime() {
 
     network_state_.status = is_setup_mode ? NetworkStatus::SETUP : NetworkStatus::CONNECTING;
     setSystemState(is_setup_mode ? SystemState::SETUP : SystemState::CONNECTING);
-    displayPlayAnimation(DisplayAnimation::BOOT);
+    display_->playAnimation(DisplayAnimation::BOOT);
 
     if (requestMode(
         is_setup_mode ? NetworkCommandType::START_SETUP_MODE
@@ -97,7 +98,7 @@ void SystemManager::startRuntime() {
     }
 
     setSystemState(SystemState::NETWORK_ERROR);
-    displayPlayAnimation(DisplayAnimation::NONE);
+    display_->playAnimation(DisplayAnimation::NONE);
 }
 
 void SystemManager::handleNetworkState(const NetworkState& network_state) {
@@ -114,7 +115,7 @@ void SystemManager::handleToggleDirection() {
         show_left_arrow = !show_left_arrow;
     }
 
-    displayPlayAnimation(
+    display_->playAnimation(
         show_left_arrow
             ? DisplayAnimation::DIRECTION_LEFT
             : DisplayAnimation::DIRECTION_RIGHT
@@ -127,12 +128,12 @@ void SystemManager::handleForceSetup() {
     if (requestMode(NetworkCommandType::START_SETUP_MODE)) {
         network_state_.status = NetworkStatus::SETUP;
         setSystemState(SystemState::SETUP);
-        displayPlayAnimation(DisplayAnimation::NONE);
+        display_->playAnimation(DisplayAnimation::NONE);
         return;
     }
 
     setSystemState(SystemState::NETWORK_ERROR);
-    displayPlayAnimation(DisplayAnimation::NONE);
+    display_->playAnimation(DisplayAnimation::NONE);
 }
 
 void SystemManager::handleSetupConfig(const SetupConfig& setup_config) {
@@ -143,7 +144,7 @@ void SystemManager::handleSetupConfig(const SetupConfig& setup_config) {
 
     if (!saveSetupConfig(setup_config)) {
         setSystemState(SystemState::NETWORK_ERROR);
-        displayPlayAnimation(DisplayAnimation::NONE);
+        display_->playAnimation(DisplayAnimation::NONE);
         return;
     }
 
@@ -152,7 +153,7 @@ void SystemManager::handleSetupConfig(const SetupConfig& setup_config) {
 
     if (!requestMode(NetworkCommandType::START_NORMAL_MODE)) {
         setSystemState(SystemState::NETWORK_ERROR);
-        displayPlayAnimation(DisplayAnimation::NONE);
+        display_->playAnimation(DisplayAnimation::NONE);
     }
 }
 
@@ -287,8 +288,8 @@ void SystemManager::systemTask(void* pvParameters) {
             self->handleSystemEvent(system_event);
         }
 
-        displaySetState(self->buildDisplayState());
-        displayUpdate();
+        self->display_->setState(self->buildDisplayState());
+        self->display_->update();
         vTaskDelayUntil(&next_update, pdMS_TO_TICKS(self->kUpdateInterval_));
     }
 }
