@@ -1,5 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"
 #include "app_context.h"
 #include "display.h"
 #include "system_manager.h"
@@ -7,8 +8,11 @@
 #include "message_types.h"
 #include "system_init.h"
 
+const char* TAG = "main";
+
 extern "C" void app_main(void)
 {
+    ESP_LOGI(TAG, "Nästa Mini - Booting firmware version %d", kFirmwareVersion);
     systemInit();
 
     static Queues queues = {
